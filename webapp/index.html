@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Scorer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 2rem 0;
+        }
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .card {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        }
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background-color: #f5f5f5;
+            border: 2px dashed #b5bdc4;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 60px;
+        }
+        .file-input-label:hover {
+            background-color: #efefef;
+            border-color: #667eea;
+        }
+        .file-input-label.has-files {
+            background-color: #f0f7ff;
+            border-color: #667eea;
+            color: #667eea;
+        }
+        .results-section {
+            margin-top: 2rem;
+        }
+        .metric-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 0.5rem 0;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        #chart {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <section class="hero is-medium">
+        <div class="hero-body">
+            <div class="container has-text-centered">
+                <h1 class="title is-1">OCR Scorer</h1>
+                <p class="subtitle is-4">Evaluate OCR Quality with Character and Word Error Rates</p>
+            </div>
+        </div>
+    </section>
+
+    <div class="container" style="margin-top: -40px;">
+        <!-- File Selection Card -->
+        <div class="card mb-6">
+            <div class="card-content">
+                <div class="content">
+                    <h2 class="title is-4">Select Files</h2>
+                    <p class="subtitle is-6">Upload ground truth and prediction text files</p>
+                    
+                    <div class="columns is-multiline">
+                        <div class="column is-half">
+                            <label class="label">Ground Truth Files</label>
+                            <div class="file-input-wrapper">
+                                <input type="file" id="gtFiles" multiple accept=".txt">
+                                <label for="gtFiles" class="file-input-label">
+                                    <span id="gtFilesLabel">Click to select GT files...</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="column is-half">
+                            <label class="label">Prediction Files</label>
+                            <div class="file-input-wrapper">
+                                <input type="file" id="predFiles" multiple accept=".txt">
+                                <label for="predFiles" class="file-input-label">
+                                    <span id="predFilesLabel">Click to select prediction files...</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field is-grouped is-grouped-centered mt-5">
+                        <p class="control">
+                            <button id="calculateBtn" class="button is-large is-gradient" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; cursor: pointer;">
+                                <span class="icon">📊</span>
+                                <span>Calculate Metrics</span>
+                            </button>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Card -->
+        <div id="resultsCard" class="card mb-6" style="display: none;">
+            <div class="card-content">
+                <h2 class="title is-4">Results</h2>
+                <div id="results"></div>
+            </div>
+        </div>
+
+        <!-- Chart Card -->
+        <div id="chartCard" class="card" style="display: none;">
+            <div class="card-content">
+                <h2 class="title is-4">Visualization</h2>
+                <div style="background: white; padding: 1rem; border-radius: 8px;">
+                    <canvas id="chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
