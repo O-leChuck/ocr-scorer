@@ -1,0 +1,9 @@
+[
+  {
+    "page":"pred_file-01",
+    "cer_case_sensitive":4.5751633987,
+    "wer_case_sensitive":20.8333333333,
+    "cer_case_insensitive":0.0,
+    "wer_case_insensitive":0.0
+  }
+]
