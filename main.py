@@ -1,7 +1,10 @@
 """
 author:    Ole Meiners
 date:      2024-06-17
-description: This script calculates the Character Error Rate (CER) and Word Error Rate (WER) between a set of reference texts (ground truth) and predicted texts (OCR outputs). It supports both case-sensitive and case-insensitive evaluation schemas. The results are saved in CSV and JSON formats, and a visualization of the per-page CER and WER is generated and saved as a PNG file.
+description: This script calculates the Character Error Rate (CER) and Word Error Rate (WER) between a set of reference texts (ground truth) and predicted texts (OCR outputs). It supports two evaluation regimes:
+- raw whitespace tokenization without normalization
+- normalized evaluation using jiwer default text transforms.
+The results are saved in CSV and JSON formats, and a visualization of the per-page CER and WER is generated and saved as a PNG file.
 """
 
 import glob
@@ -9,6 +12,7 @@ import os
 import Levenshtein
 import pandas as pd
 import matplotlib.pyplot as plt
+from jiwer import cer as jiwer_cer, wer as jiwer_wer
 from utils import select_folder, find_folder
 
 FOLDER_NAME_GT = "Goldstandard"
@@ -29,16 +33,30 @@ def calculate_lev_dist_text(reference: str, predicted: str) -> float:
 
 
 def calculate_lev_dist_words(reference: str, predicted: str) -> tuple[float, int]:
-    """Calculates the Word Error Rate (WER) between a reference text and a predicted text."""
+    """Calculates raw WER using whitespace tokenization and word-level Levenshtein distance."""
 
-    # Splits the predicted and reference texts into words
+    # Splits the predicted and reference texts into lists of strings (words)
+    # This is a strict raw WER regime: no lowercasing, no punctuation normalization,
+    # and no additional tokenization beyond Python whitespace splitting.
     predicted_words = predicted.split()
     reference_words = reference.split()
 
-    # Calculates WER using the Levenshtein distance on words
+    # Calculates WER by computing Levenshtein distance between two lists of words.
+    # If two words don't match exactly, that counts as one word substitution.
     lev_dist_words = Levenshtein.distance(predicted_words, reference_words)
 
     return lev_dist_words, len(reference_words)
+
+
+def calculate_jiwer_metrics(reference: str, predicted: str) -> tuple[float, float]:
+    """Calculates CER and WER using jiwer default normalization transforms.
+
+    jiwer normalizes both reference and hypothesis before measuring errors.
+    The default transform includes lowercasing, punctuation removal, and whitespace
+    normalization. This regime is designed to be more robust for OCR evaluation
+    than raw whitespace tokenization.
+    """
+    return jiwer_cer(reference, predicted), jiwer_wer(reference, predicted)
 
 
 def main():
@@ -78,13 +96,13 @@ def main():
     files_gt.sort()
     files_pred.sort()
 
-    # counting varibles for errors and text length
-    lev_dist_accumulated = 0
-    lev_dist_words_accumulated = 0
-    lev_dist_cs_accumulated = 0
-    lev_dist_cs_words_accumulated = 0
+    # counting variables for errors and text length
+    lev_dist_raw_accumulated = 0
+    lev_dist_raw_words_accumulated = 0
     chars_gt_accumulated = 0
     words_gt_accumulated = 0
+    jiwer_references = []
+    jiwer_predictions = []
 
     # list to collect per-page metrics
     page_metrics = []
@@ -115,52 +133,31 @@ def main():
             continue
 
         # calculate cer and wer for case-sensitive eval schema
-        lev_dist_cs_page = calculate_lev_dist_text(reference, predicted)
-        lev_dist_cs_accumulated += lev_dist_cs_page
+        lev_dist_raw_page = calculate_lev_dist_text(reference, predicted)
+        lev_dist_raw_accumulated += lev_dist_raw_page
         chars_gt_accumulated += len(reference)
 
-        cer_cs_page = (
-            lev_dist_cs_page / len(reference)
+        cer_raw_page = (
+            lev_dist_raw_page / len(reference)
             if len(reference) > 0
-            else lev_dist_cs_page
+            else lev_dist_raw_page
         ) * 100
 
-        lev_dist_cs_words_page, words_gt_file = calculate_lev_dist_words(
+        lev_dist_raw_words_page, words_gt_file = calculate_lev_dist_words(
             reference, predicted
         )
-        lev_dist_cs_words_accumulated += lev_dist_cs_words_page
+        lev_dist_raw_words_accumulated += lev_dist_raw_words_page
         words_gt_accumulated += words_gt_file
 
-        wer_cs_page = (
-            lev_dist_cs_words_page / words_gt_file
+        wer_raw_page = (
+            lev_dist_raw_words_page / words_gt_file
             if words_gt_file > 0
-            else lev_dist_cs_words_page
+            else lev_dist_raw_words_page
         ) * 100
 
-        # calculate cer and wer for non-case-sensitive eval schema
-        # lowercase reference and prediction
-        reference_lower = reference.lower()
-        predicted_lower = predicted.lower()
-
-        lev_dist_page = calculate_lev_dist_text(reference_lower, predicted_lower)
-        lev_dist_accumulated += lev_dist_page
-
-        cer_page = (
-            lev_dist_page / len(reference_lower)
-            if len(reference_lower) > 0
-            else lev_dist_page
-        ) * 100
-
-        lev_dist_words_page, words_gt_file = calculate_lev_dist_words(
-            reference_lower, predicted_lower
-        )
-        lev_dist_words_accumulated += lev_dist_words_page
-
-        wer_page = (
-            lev_dist_words_page / words_gt_file
-            if words_gt_file > 0
-            else lev_dist_words_page
-        ) * 100
+        cer_jiwer_page, wer_jiwer_page = calculate_jiwer_metrics(reference, predicted)
+        jiwer_references.append(reference)
+        jiwer_predictions.append(predicted)
 
         # extract page name from file path
         page_name = os.path.splitext(os.path.basename(file_pred))[0]
@@ -169,49 +166,46 @@ def main():
         page_metrics.append(
             {
                 "page": page_name,
-                "cer_case_sensitive": cer_cs_page,
-                "wer_case_sensitive": wer_cs_page,
-                "cer_case_insensitive": cer_page,
-                "wer_case_insensitive": wer_page,
+                "cer_raw": cer_raw_page,
+                "wer_raw": wer_raw_page,
+                "cer_jiwer_normalized": cer_jiwer_page * 100,
+                "wer_jiwer_normalized": wer_jiwer_page * 100,
             }
         )
 
-    # Normalize the document-wide CER scores by dividing it by the length of the reference text
+    # Normalize the document-wide raw CER scores by dividing by the total reference character count.
     try:
-        lev_dist_cs_accumulated /= chars_gt_accumulated
+        lev_dist_raw_accumulated /= chars_gt_accumulated
     except ZeroDivisionError:
-        print("Warning: No characters in GT! Cannot calculate case-sensitive CER.")
+        print("Warning: No characters in GT! Cannot calculate raw CER.")
 
-    try:
-        lev_dist_accumulated /= chars_gt_accumulated
-    except ZeroDivisionError:
-        print("Warning: No characters in GT! Cannot calculate CER.")
+    if jiwer_references and jiwer_predictions:
+        reference_all = "\n".join(jiwer_references)
+        predicted_all = "\n".join(jiwer_predictions)
+        jiwer_cer_percentage = jiwer_cer(reference_all, predicted_all) * 100
+        jiwer_wer_percentage = jiwer_wer(reference_all, predicted_all) * 100
+    else:
+        jiwer_cer_percentage = 0.0
+        jiwer_wer_percentage = 0.0
 
-    # Normalize the document-wide WER scores by dividing it by the number of words in the GT
+    # Normalize the document-wide raw WER scores by dividing by the total reference word count.
     try:
-        lev_dist_cs_words_accumulated /= words_gt_accumulated
+        lev_dist_raw_words_accumulated /= words_gt_accumulated
     except ZeroDivisionError:
-        print("Warning: No words in GT! Cannot calculate case-sensitive WER.")
-
-    try:
-        lev_dist_words_accumulated /= words_gt_accumulated
-    except ZeroDivisionError:
-        print("Warning: No words in GT! Cannot calculate WER.")
+        print("Warning: No words in GT! Cannot calculate raw WER.")
 
     # calculate percentages
-    cer_cs_percentage = lev_dist_cs_accumulated * 100
-    cer_percentage = lev_dist_accumulated * 100
-    wer_cs_percentage = lev_dist_cs_words_accumulated * 100
-    wer_percentage = lev_dist_words_accumulated * 100
+    cer_raw_percentage = lev_dist_raw_accumulated * 100
+    wer_raw_percentage = lev_dist_raw_words_accumulated * 100
 
     print(
         "Results in total:\n"
-        "Case-sensitive evaluation schema:\n"
-        f"\tCER: {cer_cs_percentage:.2f}%\n"
-        f"\tWER: {wer_cs_percentage:.2f}%\n"
-        "Non-case-sensitive evaluation schema:\n"
-        f"\tCER: {cer_percentage:.2f}%\n"
-        f"\tWER: {wer_percentage:.2f}%\n"
+        "Raw evaluation (whitespace tokenization):\n"
+        f"\tCER raw: {cer_raw_percentage:.2f}%\n"
+        f"\tWER raw: {wer_raw_percentage:.2f}%\n"
+        "Normalized evaluation (jiwer default transforms):\n"
+        f"\tCER normalized: {jiwer_cer_percentage:.2f}%\n"
+        f"\tWER normalized: {jiwer_wer_percentage:.2f}%\n"
     )
 
     # Create DataFrame from page metrics
@@ -230,37 +224,37 @@ def main():
     # Create visualization
     fig, ax = plt.subplots(figsize=(14, 7))
 
-    # Plot all four metrics
+    # Plot the raw and normalized metrics
     ax.plot(
         df.index,
-        df["cer_case_sensitive"],
+        df["cer_raw"],
         marker="o",
         linewidth=2,
-        label="CER (Case-Sensitive)",
+        label="CER raw",
         color="#FF6B6B",
     )
     ax.plot(
         df.index,
-        df["wer_case_sensitive"],
+        df["wer_raw"],
         marker="s",
         linewidth=2,
-        label="WER (Case-Sensitive)",
+        label="WER raw",
         color="#4ECDC4",
     )
     ax.plot(
         df.index,
-        df["cer_case_insensitive"],
+        df["cer_jiwer_normalized"],
         marker="^",
         linewidth=2,
-        label="CER (Case-Insensitive)",
+        label="CER jiwer normalized",
         color="#FFE66D",
     )
     ax.plot(
         df.index,
-        df["wer_case_insensitive"],
+        df["wer_jiwer_normalized"],
         marker="d",
         linewidth=2,
-        label="WER (Case-Insensitive)",
+        label="WER jiwer normalized",
         color="#95E1D3",
     )
 
@@ -268,7 +262,7 @@ def main():
     ax.set_xlabel("Page Number", fontsize=12, fontweight="bold")
     ax.set_ylabel("Error Rate (%)", fontsize=12, fontweight="bold")
     ax.set_title(
-        "CER/WER per Page - Case-Sensitive vs Case-Insensitive",
+        "CER/WER per Page - Raw vs jiwer Normalized",
         fontsize=14,
         fontweight="bold",
     )
