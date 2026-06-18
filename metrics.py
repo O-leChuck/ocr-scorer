@@ -1,3 +1,11 @@
+"""OCR evaluation metric helpers.
+
+This module contains functions for computing raw and normalized OCR
+error metrics, including character error rate (CER) and word error rate
+(WER). It supports raw Levenshtein-based calculations and normalizes
+text with jiwer.
+"""
+
 import Levenshtein
 from jiwer import cer as jiwer_cer, wer as jiwer_wer
 

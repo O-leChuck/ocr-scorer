@@ -12,14 +12,14 @@ The results are saved in CSV and JSON formats, and a visualization of
 
 import glob
 import os
-from utils import select_folder, find_folder
+from io_helpers import select_folder, find_folder, save_metrics
 from metrics import (
     calculate_lev_dist_text,
     calculate_lev_dist_words,
     calculate_jiwer_metrics,
     calculate_jiwer_document_level,
 )
-from plotting import save_and_plot_metrics
+from plotting import plot_metrics
 
 FOLDER_NAME_GT = "Goldstandard"
 FOLDER_NAME_PRED = "Lumen-Lucernae"
@@ -177,8 +177,9 @@ def main():
         f"\tWER normalized: {jiwer_wer_percentage:.2f}%\n"
     )
 
-    # Save metrics and create visualization (delegated to plotting helper)
-    save_and_plot_metrics(page_metrics, folder_pred)
+    # Save metrics and create visualization (delegated to plotting helpers)
+    df = save_metrics(page_metrics, folder_pred)
+    plot_metrics(df, folder_pred)
 
 
 if __name__ == "__main__":
