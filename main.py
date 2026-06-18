@@ -1,62 +1,28 @@
 """
 author:    Ole Meiners
 date:      2024-06-17
-description: This script calculates the Character Error Rate (CER) and Word Error Rate (WER) between a set of reference texts (ground truth) and predicted texts (OCR outputs). It supports two evaluation regimes:
+description: This script calculates the Character Error Rate (CER) and
+ Word Error Rate (WER) between a set of reference texts (ground truth)
+ and predicted texts (OCR outputs). It supports two evaluation regimes:
 - raw whitespace tokenization without normalization
 - normalized evaluation using jiwer default text transforms.
-The results are saved in CSV and JSON formats, and a visualization of the per-page CER and WER is generated and saved as a PNG file.
+The results are saved in CSV and JSON formats, and a visualization of
+ the per-page CER and WER is generated and saved as a PNG file.
 """
 
 import glob
 import os
-import Levenshtein
-import pandas as pd
-import matplotlib.pyplot as plt
-from jiwer import cer as jiwer_cer, wer as jiwer_wer
 from utils import select_folder, find_folder
+from metrics import (
+    calculate_lev_dist_text,
+    calculate_lev_dist_words,
+    calculate_jiwer_metrics,
+    calculate_jiwer_document_level,
+)
+from plotting import save_and_plot_metrics
 
 FOLDER_NAME_GT = "Goldstandard"
 FOLDER_NAME_PRED = "Lumen-Lucernae"
-
-
-def calculate_lev_dist_text(reference: str, predicted: str) -> float:
-    """Calculates the Character Error Rate (CER) between a reference text and a predicted text."""
-
-    # is this actually necesary...? only if we split before...
-    # predicted = " ".join(predicted)
-    # reference = " ".join(reference)
-
-    # Calculates CER using the Levenshtein distance
-    lev_dist_text = Levenshtein.distance(predicted, reference)
-
-    return lev_dist_text
-
-
-def calculate_lev_dist_words(reference: str, predicted: str) -> tuple[float, int]:
-    """Calculates raw WER using whitespace tokenization and word-level Levenshtein distance."""
-
-    # Splits the predicted and reference texts into lists of strings (words)
-    # This is a strict raw WER regime: no lowercasing, no punctuation normalization,
-    # and no additional tokenization beyond Python whitespace splitting.
-    predicted_words = predicted.split()
-    reference_words = reference.split()
-
-    # Calculates WER by computing Levenshtein distance between two lists of words.
-    # If two words don't match exactly, that counts as one word substitution.
-    lev_dist_words = Levenshtein.distance(predicted_words, reference_words)
-
-    return lev_dist_words, len(reference_words)
-
-
-def calculate_jiwer_metrics(reference: str, predicted: str) -> tuple[float, float]:
-    """Calculates CER and WER using jiwer default normalization transforms.
-
-    jiwer normalizes both reference and hypothesis before measuring errors.
-    The default transform includes lowercasing, punctuation removal, and whitespace
-    normalization. This regime is designed to be more robust for OCR evaluation
-    than raw whitespace tokenization.
-    """
-    return jiwer_cer(reference, predicted), jiwer_wer(reference, predicted)
 
 
 def main():
@@ -88,7 +54,10 @@ def main():
     # check if number of files is the same, throw warning if not
     if len(files_gt) != len(files_pred):
         print(
-            f"Warning: Number of files in GT folder ({len(files_gt)}) and Prediction folder ({len(files_pred)}) do not match! Make sure to select the correct folders."
+            "Warning: Number of files in GT folder "
+            f"({len(files_gt)}) and Prediction folder "
+            f"({len(files_pred)}) do not match! Make sure to select the "
+            "correct folders."
         )
         # TODO: implement a way in which hereafter user needs to select folder again
 
@@ -168,8 +137,8 @@ def main():
                 "page": page_name,
                 "cer_raw": cer_raw_page,
                 "wer_raw": wer_raw_page,
-                "cer_jiwer_normalized": cer_jiwer_page * 100,
-                "wer_jiwer_normalized": wer_jiwer_page * 100,
+                "cer_jiwer_normalized": cer_jiwer_page,
+                "wer_jiwer_normalized": wer_jiwer_page,
             }
         )
 
@@ -180,10 +149,10 @@ def main():
         print("Warning: No characters in GT! Cannot calculate raw CER.")
 
     if jiwer_references and jiwer_predictions:
-        reference_all = "\n".join(jiwer_references)
-        predicted_all = "\n".join(jiwer_predictions)
-        jiwer_cer_percentage = jiwer_cer(reference_all, predicted_all) * 100
-        jiwer_wer_percentage = jiwer_wer(reference_all, predicted_all) * 100
+        (
+            jiwer_cer_percentage,
+            jiwer_wer_percentage,
+        ) = calculate_jiwer_document_level(jiwer_references, jiwer_predictions)
     else:
         jiwer_cer_percentage = 0.0
         jiwer_wer_percentage = 0.0
@@ -208,74 +177,8 @@ def main():
         f"\tWER normalized: {jiwer_wer_percentage:.2f}%\n"
     )
 
-    # Create DataFrame from page metrics
-    df = pd.DataFrame(page_metrics)
-
-    # Save metrics to CSV
-    csv_output_path = os.path.join(folder_pred, "../metrics_pagewise.csv")
-    df.to_csv(csv_output_path, index=False)
-    print(f"\nMetrics saved to CSV: {csv_output_path}")
-
-    # Save metrics to JSON
-    json_output_path = os.path.join(folder_pred, "../metrics_pagewise.json")
-    df.to_json(json_output_path, orient="records", indent=2)
-    print(f"Metrics saved to JSON: {json_output_path}")
-
-    # Create visualization
-    fig, ax = plt.subplots(figsize=(14, 7))
-
-    # Plot the raw and normalized metrics
-    ax.plot(
-        df.index,
-        df["cer_raw"],
-        marker="o",
-        linewidth=2,
-        label="CER raw",
-        color="#FF6B6B",
-    )
-    ax.plot(
-        df.index,
-        df["wer_raw"],
-        marker="s",
-        linewidth=2,
-        label="WER raw",
-        color="#4ECDC4",
-    )
-    ax.plot(
-        df.index,
-        df["cer_jiwer_normalized"],
-        marker="^",
-        linewidth=2,
-        label="CER jiwer normalized",
-        color="#FFE66D",
-    )
-    ax.plot(
-        df.index,
-        df["wer_jiwer_normalized"],
-        marker="d",
-        linewidth=2,
-        label="WER jiwer normalized",
-        color="#95E1D3",
-    )
-
-    # Set labels and title
-    ax.set_xlabel("Page Number", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Error Rate (%)", fontsize=12, fontweight="bold")
-    ax.set_title(
-        "CER/WER per Page - Raw vs jiwer Normalized",
-        fontsize=14,
-        fontweight="bold",
-    )
-    ax.legend(loc="best", fontsize=10)
-    ax.grid(True, alpha=0.3)
-    ax.set_xticks(range(len(df)))
-
-    # Save figure
-    chart_output_path = os.path.join(folder_pred, "../metrics_visualization.png")
-    plt.tight_layout()
-    plt.savefig(chart_output_path, dpi=300, bbox_inches="tight")
-    print(f"Visualization saved to: {chart_output_path}")
-    plt.show()
+    # Save metrics and create visualization (delegated to plotting helper)
+    save_and_plot_metrics(page_metrics, folder_pred)
 
 
 if __name__ == "__main__":

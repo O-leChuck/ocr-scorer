@@ -14,7 +14,7 @@ The script supports two evaluation regimes:
      - WER raw
 
 2. **Normalized jiwer evaluation**
-   - Uses `jiwer` default transforms
+   - Uses `jiwer` [default transforms](https://jitsi.github.io/jiwer/reference/transformations/)
    - Applies normalization before error calculation
    - This includes lowercasing, punctuation removal, and whitespace normalization
    - Calculates:
