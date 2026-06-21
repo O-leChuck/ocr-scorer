@@ -5,7 +5,7 @@ description: This script calculates the Character Error Rate (CER) and
  Word Error Rate (WER) between a set of reference texts (ground truth)
  and predicted texts (OCR outputs). It supports two evaluation regimes:
 - raw whitespace tokenization without normalization
-- normalized evaluation using jiwer default text transforms.
+- normalized evaluation using a custom jiwer transform pipeline
 The results are saved in CSV and JSON formats, and a visualization of
  the per-page CER and WER is generated and saved as a PNG file.
 """
@@ -16,8 +16,8 @@ from io_helpers import select_folder, find_folder, save_metrics
 from metrics import (
     calculate_lev_dist_text,
     calculate_lev_dist_words,
+    calculate_jiwer_counts,
     calculate_jiwer_metrics,
-    calculate_jiwer_document_level,
 )
 from plotting import plot_metrics
 
@@ -27,7 +27,8 @@ FOLDER_NAME_PRED = "Lumen-Lucernae"
 
 def main():
     """Main function to execute the CER/WER calculation and create visualization."""
-    # trying to find most likey folders for GT and predictions to use in folder selection dialog
+    # Try to locate likely GT and prediction folders automatically.
+    # If not found, the user is prompted to select folders manually.
     target_folder_gt = find_folder(FOLDER_NAME_GT)
     target_folder_pred = find_folder(FOLDER_NAME_PRED)
 
@@ -47,7 +48,8 @@ def main():
     title_pred_selection = "Select a folder with Predictions to evaluate"
     folder_pred = select_folder(initial_directory_pred, title_pred_selection)
 
-    # get list with file pathes to zip together
+    # collect sorted page file lists so names align when zipped
+    # note: zip() below ignores any unmatched files if folder counts differ
     files_gt = glob.glob(os.path.join(folder_gt, "*.txt"))
     files_pred = glob.glob(os.path.join(folder_pred, "*.txt"))
 
@@ -65,15 +67,19 @@ def main():
     files_gt.sort()
     files_pred.sort()
 
-    # counting variables for errors and text length
+    # counting variables for document-wide totals
+    # Raw totals are normalized at the end by total reference length.
+    # Jiwer totals are aggregated from per-page edit counts and ref lengths.
     lev_dist_raw_accumulated = 0
     lev_dist_raw_words_accumulated = 0
     chars_gt_accumulated = 0
     words_gt_accumulated = 0
-    jiwer_references = []
-    jiwer_predictions = []
+    jiwer_char_edits_accumulated = 0
+    jiwer_ref_chars_accumulated = 0
+    jiwer_word_edits_accumulated = 0
+    jiwer_ref_words_accumulated = 0
 
-    # list to collect per-page metrics
+    # list to collect per-page metrics for CSV/JSON export and plotting
     page_metrics = []
 
     for file_gt, file_pred in zip(files_gt, files_pred):
@@ -101,7 +107,8 @@ def main():
             print(f"Error reading {file_pred}: {e}")
             continue
 
-        # calculate cer and wer for case-sensitive eval schema
+        # calculate raw CER/WER on the unnormalized page text
+        # Raw values remain page-specific for plotting and document totals.
         lev_dist_raw_page = calculate_lev_dist_text(reference, predicted)
         lev_dist_raw_accumulated += lev_dist_raw_page
         chars_gt_accumulated += len(reference)
@@ -125,8 +132,18 @@ def main():
         ) * 100
 
         cer_jiwer_page, wer_jiwer_page = calculate_jiwer_metrics(reference, predicted)
-        jiwer_references.append(reference)
-        jiwer_predictions.append(predicted)
+        # Count normalized edits and normalized reference lengths per page.
+        # These totals are summed across pages for the final aggregate.
+        (
+            jiwer_char_edits_page,
+            jiwer_ref_chars_page,
+            jiwer_word_edits_page,
+            jiwer_ref_words_page,
+        ) = calculate_jiwer_counts(reference, predicted)
+        jiwer_char_edits_accumulated += jiwer_char_edits_page
+        jiwer_ref_chars_accumulated += jiwer_ref_chars_page
+        jiwer_word_edits_accumulated += jiwer_word_edits_page
+        jiwer_ref_words_accumulated += jiwer_ref_words_page
 
         # extract page name from file path
         page_name = os.path.splitext(os.path.basename(file_pred))[0]
@@ -148,20 +165,28 @@ def main():
     except ZeroDivisionError:
         print("Warning: No characters in GT! Cannot calculate raw CER.")
 
-    if jiwer_references and jiwer_predictions:
-        (
-            jiwer_cer_percentage,
-            jiwer_wer_percentage,
-        ) = calculate_jiwer_document_level(jiwer_references, jiwer_predictions)
-    else:
-        jiwer_cer_percentage = 0.0
-        jiwer_wer_percentage = 0.0
-
     # Normalize the document-wide raw WER scores by dividing by the total reference word count.
     try:
         lev_dist_raw_words_accumulated /= words_gt_accumulated
     except ZeroDivisionError:
         print("Warning: No words in GT! Cannot calculate raw WER.")
+
+    # Aggregate jiwer-normalized counts across pages instead of concatenate text.
+    try:
+        jiwer_cer_percentage = (
+            jiwer_char_edits_accumulated / jiwer_ref_chars_accumulated
+        ) * 100
+    except ZeroDivisionError:
+        jiwer_cer_percentage = 0.0
+        print("Warning: No normalized reference characters available for jiwer CER.")
+
+    try:
+        jiwer_wer_percentage = (
+            jiwer_word_edits_accumulated / jiwer_ref_words_accumulated
+        ) * 100
+    except ZeroDivisionError:
+        jiwer_wer_percentage = 0.0
+        print("Warning: No normalized reference words available for jiwer WER.")
 
     # calculate percentages
     cer_raw_percentage = lev_dist_raw_accumulated * 100
@@ -172,12 +197,12 @@ def main():
         "Raw evaluation (whitespace tokenization):\n"
         f"\tCER raw: {cer_raw_percentage:.2f}%\n"
         f"\tWER raw: {wer_raw_percentage:.2f}%\n"
-        "Normalized evaluation (jiwer default transforms):\n"
+        "Normalized evaluation (custom jiwer transforms):\n"
         f"\tCER normalized: {jiwer_cer_percentage:.2f}%\n"
         f"\tWER normalized: {jiwer_wer_percentage:.2f}%\n"
     )
 
-    # Save metrics and create visualization (delegated to plotting helpers)
+    # Save page-wise metrics and plot the results from the same exported DataFrame.
     df = save_metrics(page_metrics, folder_pred)
     plot_metrics(df, folder_pred)
 

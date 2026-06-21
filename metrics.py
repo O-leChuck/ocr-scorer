@@ -6,8 +6,66 @@ error metrics, including character error rate (CER) and word error rate
 text with jiwer.
 """
 
+import unicodedata
 import Levenshtein
-from jiwer import cer as jiwer_cer, wer as jiwer_wer
+from jiwer import (
+    cer as jiwer_cer,
+    process_characters,
+    process_words,
+    wer as jiwer_wer,
+    Compose,
+    ToLowerCase,
+    RemovePunctuation,
+    Strip,
+    RemoveMultipleSpaces,
+    ReduceToListOfListOfChars,
+    ReduceToListOfListOfWords,
+)
+from jiwer.transforms import AbstractTransform
+
+
+class ReplacePunctuationWithSpace(AbstractTransform):
+    """Replace Unicode punctuation with spaces while preserving token boundaries.
+
+    This transform is used only for normalized WER. It preserves word
+    boundaries when punctuation separates text, for example
+    "high-quality" -> "high quality".
+    """
+
+    def process_string(self, s: str) -> str:
+        return "".join(
+            " " if unicodedata.category(char).startswith("P") else char for char in s
+        )
+
+
+# Custom jiwer transforms with aggressive normalization.
+# This pipeline is intentionally applied to normalized CER/WER so the
+# script focuses on transcription accuracy rather than formatting.
+#
+# Current behavior:
+# - Lowercase text
+# - Remove Unicode punctuation (categories Po, Pd, Ps, Pe, Pi, Pf, Pc)
+# - Strip leading/trailing whitespace
+# - Replace punctuation with spaces for WER
+# - Collapse multiple spaces for WER
+cer_custom_transform = Compose(
+    [
+        ToLowerCase(),
+        RemovePunctuation(),
+        Strip(),
+        ReduceToListOfListOfChars(),
+    ]
+)
+
+wer_custom_transform = Compose(
+    [
+        ToLowerCase(),
+        ReplacePunctuationWithSpace(),
+        RemoveMultipleSpaces(),
+        Strip(),
+        ReduceToListOfListOfWords(),
+    ]
+)
 
 
 def calculate_lev_dist_text(reference: str, predicted: str) -> float:
@@ -36,33 +94,78 @@ def calculate_lev_dist_words(reference: str, predicted: str) -> tuple[float, int
 
 
 def calculate_jiwer_metrics(reference: str, predicted: str) -> tuple[float, float]:
-    """Calculates CER and WER using jiwer default normalization transforms.
+    """Calculates CER and WER using jiwer with custom aggressive normalization.
 
-    jiwer normalizes both reference and hypothesis before measuring errors.
-    The default transform includes lowercasing, punctuation removal, and whitespace
-    normalization. This regime is designed to be more robust for OCR evaluation
-    than raw whitespace tokenization.
+    Custom transforms include lowercasing, punctuation removal, and whitespace
+    normalization. This regime is designed to focus on transcription accuracy
+    rather than formatting or punctuation differences.
+
+    Transforms applied:
+    - ToLowerCase()
+    - RemovePunctuation() (removes Unicode category P: punctuation)
+    - RemoveMultipleSpaces() (for WER only)
+    - Strip()
     """
     # Return percentages for consistency with other helpers
-    return jiwer_cer(reference, predicted) * 100, jiwer_wer(reference, predicted) * 100
+    return (
+        jiwer_cer(
+            reference,
+            predicted,
+            reference_transform=cer_custom_transform,
+            hypothesis_transform=cer_custom_transform,
+        )
+        * 100,
+        jiwer_wer(
+            reference,
+            predicted,
+            reference_transform=wer_custom_transform,
+            hypothesis_transform=wer_custom_transform,
+        )
+        * 100,
+    )
 
 
-def calculate_jiwer_document_level(
-    references: list[str], predictions: list[str]
-) -> tuple[float, float]:
-    """Calculate document-level jiwer CER and WER.
+def calculate_jiwer_counts(reference: str, predicted: str) -> tuple[int, int, int, int]:
+    """Calculate normalized edit counts and reference lengths for jiwer metrics.
 
-    The function joins the list of per-page references and predictions with
-    newlines and computes jiwer metrics on the concatenated texts. This is
-    preferable for a single overall normalized score because jiwer's text
-    transforms (lowercasing, punctuation removal, whitespace normalization)
-    are applied consistently across the whole document.
-    Returns percentages (CER%, WER%).
+    This returns the counts needed to aggregate per-page jiwer results by
+    summing edit distances and normalized reference lengths rather than
+    concatenating pages into one document.
+
+    Applies the same custom transforms as calculate_jiwer_metrics():
+    - ToLowerCase()
+    - RemovePunctuation()
+    - Strip()
+    - RemoveMultipleSpaces() (for WER only)
+
+    The aggregation strategy is:
+    1) normalize each page independently, then
+    2) sum normalized edit distances and reference lengths across pages,
+    3) compute the final rate from the totals.
     """
-    reference_all = "\n".join(references)
-    predicted_all = "\n".join(predictions)
+    character_output = process_characters(
+        reference,
+        predicted,
+        reference_transform=cer_custom_transform,
+        hypothesis_transform=cer_custom_transform,
+    )
+    word_output = process_words(
+        reference,
+        predicted,
+        reference_transform=wer_custom_transform,
+        hypothesis_transform=wer_custom_transform,
+    )
 
-    cer_percent = jiwer_cer(reference_all, predicted_all) * 100
-    wer_percent = jiwer_wer(reference_all, predicted_all) * 100
+    char_edits = (
+        character_output.substitutions
+        + character_output.deletions
+        + character_output.insertions
+    )
+    ref_chars = sum(len(sentence) for sentence in character_output.references)
 
-    return cer_percent, wer_percent
+    word_edits = (
+        word_output.substitutions + word_output.deletions + word_output.insertions
+    )
+    ref_words = sum(len(sentence) for sentence in word_output.references)
+
+    return char_edits, ref_chars, word_edits, ref_words

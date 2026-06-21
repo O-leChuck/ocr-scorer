@@ -10,7 +10,11 @@ import matplotlib.pyplot as plt
 
 
 def plot_metrics(df: pd.DataFrame, folder_pred: str) -> None:
-    """Create a visualization from the metrics DataFrame."""
+    """Create a visualization from the metrics DataFrame.
+
+    The function expects raw and normalized CER/WER columns in the DataFrame
+    and writes a PNG plot next to the selected prediction folder.
+    """
     _, ax = plt.subplots(figsize=(14, 7))
 
     ax.plot(
@@ -57,6 +61,7 @@ def plot_metrics(df: pd.DataFrame, folder_pred: str) -> None:
     ax.grid(True, alpha=0.3)
     ax.set_xticks(range(len(df)))
 
+    # Store the chart alongside the prediction folder for easy access.
     chart_output_path = os.path.join(folder_pred, "../metrics_visualization.png")
     plt.tight_layout()
     plt.savefig(chart_output_path, dpi=300, bbox_inches="tight")

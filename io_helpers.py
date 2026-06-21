@@ -31,9 +31,13 @@ def find_folder(target_name, start_path="/home/"):
 
 
 def save_metrics(page_metrics: list[dict], folder_pred: str) -> pd.DataFrame:
-    """Save per-page metrics to CSV/JSON and return a DataFrame."""
+    """Save per-page metrics to CSV/JSON and return a DataFrame.
+
+    Outputs are written to the parent directory of the selected prediction folder.
+    """
     df = pd.DataFrame(page_metrics)
 
+    # Write exports next to the supplied prediction folder.
     csv_output_path = os.path.join(folder_pred, "../metrics_pagewise.csv")
     df.to_csv(csv_output_path, index=False)
     print(f"\nMetrics saved to CSV: {csv_output_path}")
