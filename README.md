@@ -1,6 +1,6 @@
 # OCR Scorer
 
-This script computes OCR evaluation metrics between ground truth text files and predicted OCR text files.
+This script computes OCR evaluation metrics (Character Error Rate and Word Error Rate) between ground truth text files and prediction text files from OCR systems.
 
 A limited browser-based version of the OCR Scorer is also available in the `webapp` folder. It calculates only the naive case-sensitive CER and WER values, but it can be opened directly in any modern browser and used without installing Python or writing code.
 
@@ -9,8 +9,8 @@ A limited browser-based version of the OCR Scorer is also available in the `weba
 The script supports two evaluation regimes:
 
 1. **Raw whitespace evaluation**
-   - Uses Python `split()` on raw text
    - No normalization, no lowercasing, no punctuation removal
+   - Uses Python `split()` on raw text to seperate words, de facto removing whitespace of any kind, leaving it out of the WER evaluation
    - Calculates:
      - CER raw
      - WER raw
