@@ -2,6 +2,8 @@
 
 This script computes OCR evaluation metrics between ground truth text files and predicted OCR text files.
 
+A limited browser-based version of the OCR Scorer is also available in the `webapp` folder. It calculates only the naive case-sensitive CER and WER values, but it can be opened directly in any modern browser and used without installing Python or writing code.
+
 ## What it calculates
 
 The script supports two evaluation regimes:
