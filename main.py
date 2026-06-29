@@ -12,7 +12,7 @@ The results are saved in CSV and JSON formats, and a visualization of
 
 import glob
 import os
-from io_helpers import select_folder, find_folder, save_metrics
+from io_helpers import find_folder, save_metrics, validate_and_select_folders
 from metrics import (
     calculate_lev_dist_text,
     calculate_lev_dist_words,
@@ -37,35 +37,32 @@ def main():
         if target_folder_gt
         else "/home/covid10/Nextcloud/Lumen-Lucernae/sources"
     )
-    title_gt_selection = "Select a folder with Goldstandard Evaluation Data"
-    folder_gt = select_folder(initial_directory_gt, title_gt_selection)
-
     initial_directory_pred = (
         target_folder_pred
         if target_folder_pred
         else "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/"
     )
+
+    title_gt_selection = "Select a folder with Goldstandard Evaluation Data"
     title_pred_selection = "Select a folder with Predictions to evaluate"
-    folder_pred = select_folder(initial_directory_pred, title_pred_selection)
+
+    # Validate and select folders with retry logic if counts don't match
+    result = validate_and_select_folders(
+        initial_directory_gt,
+        initial_directory_pred,
+        title_gt_selection,
+        title_pred_selection,
+    )
+
+    if result is None:
+        print("Operation aborted by user.")
+        return
+
+    folder_gt, folder_pred = result
 
     # collect sorted page file lists so names align when zipped
-    # note: zip() below ignores any unmatched files if folder counts differ
-    files_gt = glob.glob(os.path.join(folder_gt, "*.txt"))
-    files_pred = glob.glob(os.path.join(folder_pred, "*.txt"))
-
-    # check if number of files is the same, throw warning if not
-    if len(files_gt) != len(files_pred):
-        print(
-            "Warning: Number of files in GT folder "
-            f"({len(files_gt)}) and Prediction folder "
-            f"({len(files_pred)}) do not match! Make sure to select the "
-            "correct folders."
-        )
-        # TODO: implement a way in which hereafter user needs to select folder again
-
-    # sort lists to make sure correct files are compared
-    files_gt.sort()
-    files_pred.sort()
+    files_gt = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
+    files_pred = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
 
     # counting variables for document-wide totals
     # Raw totals are normalized at the end by total reference length.
@@ -92,7 +89,7 @@ def main():
         except FileNotFoundError:
             print(f"File not found: {file_gt}")
             continue
-        except Exception as e:
+        except OSError as e:
             print(f"Error reading {file_gt}: {e}")
             continue
 
@@ -103,7 +100,7 @@ def main():
             print(f"File not found: {file_pred}")
             continue
 
-        except Exception as e:
+        except OSError as e:
             print(f"Error reading {file_pred}: {e}")
             continue
 
