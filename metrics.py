@@ -6,6 +6,8 @@ error metrics, including character error rate (CER) and word error rate
 text with jiwer.
 """
 
+from collections import Counter
+from typing import Iterable, List, Tuple
 import unicodedata
 import Levenshtein
 from jiwer import (
@@ -169,3 +171,97 @@ def calculate_jiwer_counts(reference: str, predicted: str) -> tuple[int, int, in
     ref_words = sum(len(sentence) for sentence in word_output.references)
 
     return char_edits, ref_chars, word_edits, ref_words
+
+
+def _count_char_errors_from_editops(ref: str, hyp: str) -> Counter:
+    """Count errors attributed to reference characters using Levenshtein editops.
+
+    Substitutions and deletions are attributed to the reference character that
+    was not correctly recognized. Insertions are not attributed to any
+    reference character (they are extra predicted characters).
+    Returns a Counter mapping reference characters -> error counts.
+    """
+    counts: Counter = Counter()
+    ops = Levenshtein.editops(ref, hyp)
+    for op, i, _ in ops:
+        if op == "replace":
+            # substitution: ref char at i replaced by hyp char at j
+            if i < len(ref):
+                counts[ref[i]] += 1
+        elif op == "delete":
+            # deletion: ref char at i was deleted in hypothesis
+            if i < len(ref):
+                counts[ref[i]] += 1
+        # insertions are not attributed to a reference char
+    return counts
+
+
+def top_error_chars_for_pair(
+    reference: str, predicted: str, normalize: bool = False, top_n: int = 10
+) -> List[Tuple[str, int]]:
+    """Return top N reference characters that caused errors for a single pair.
+
+    If `normalize` is True, the function applies the same jiwer character
+    normalization pipeline used for CER (`cer_custom_transform`) and
+    aggregates counts per normalized sentence before alignment. This makes
+    the result comparable to the normalized CER regime.
+    """
+    if not normalize:
+        counts = _count_char_errors_from_editops(reference, predicted)
+    else:
+        # use jiwer to get normalized character-level sentences and align each
+        # normalized sentence pair separately to avoid cross-sentence joins
+        char_output = process_characters(
+            reference,
+            predicted,
+            reference_transform=cer_custom_transform,
+            hypothesis_transform=cer_custom_transform,
+        )
+        counts = Counter()
+        # zip through sentences; jiwer guarantees parallel lists
+        for ref_sent, hyp_sent in zip(char_output.references, char_output.hypotheses):
+            ref_str = "".join(ref_sent)
+            hyp_str = "".join(hyp_sent)
+            counts.update(_count_char_errors_from_editops(ref_str, hyp_str))
+
+    most_common = counts.most_common(top_n)
+    return most_common
+
+
+def aggregate_top_error_chars(
+    references: Iterable[str],
+    predictions: Iterable[str],
+    normalize: bool = False,
+    top_n: int = 10,
+) -> List[Tuple[str, int, float]]:
+    """Aggregate character error counts across multiple reference/prediction pairs.
+
+    Returns a list of tuples: (character, count, percent_of_all_ref-errors).
+    Only substitutions and deletions (i.e., errors that map to a reference
+    character) are considered. `percent_of_all_ref-errors` is relative to the
+    total number of reference-attributed errors.
+    """
+    total_counts: Counter = Counter()
+    for ref, hyp in zip(references, predictions):
+        if not normalize:
+            total_counts.update(_count_char_errors_from_editops(ref, hyp))
+        else:
+            char_output = process_characters(
+                ref,
+                hyp,
+                reference_transform=cer_custom_transform,
+                hypothesis_transform=cer_custom_transform,
+            )
+            for ref_sent, hyp_sent in zip(
+                char_output.references, char_output.hypotheses
+            ):
+                ref_str = "".join(ref_sent)
+                hyp_str = "".join(hyp_sent)
+                total_counts.update(_count_char_errors_from_editops(ref_str, hyp_str))
+
+    total_errors = sum(total_counts.values())
+    results: List[Tuple[str, int, float]] = []
+    for char, cnt in total_counts.most_common(top_n):
+        pct = (cnt / total_errors * 100) if total_errors > 0 else 0.0
+        results.append((char, cnt, pct))
+    return results
