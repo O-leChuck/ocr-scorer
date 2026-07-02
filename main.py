@@ -12,21 +12,33 @@ The results are saved in CSV and JSON formats, and a visualization of
 
 import glob
 import os
-from io_helpers import find_folder, save_metrics, validate_and_select_folders
+from io_helpers import (
+    find_folder,
+    make_evaluation_output_folder,
+    save_evaluation_log,
+    save_metrics,
+    validate_and_select_folders,
+)
+from datetime import date
 from metrics import (
+    aggregate_top_error_chars,
     calculate_lev_dist_text,
     calculate_lev_dist_words,
     calculate_jiwer_counts,
     calculate_jiwer_metrics,
 )
-from plotting import plot_metrics
+from plotting import create_pdf_report, plot_metrics
 
 FOLDER_NAME_GT = "Goldstandard"
 FOLDER_NAME_PRED = "Lumen-Lucernae"
 
 
 def main():
-    """Main function to execute the CER/WER calculation and create visualization."""
+    """
+    Main function to execute the CER/WER calculation and create
+    visualization.
+    """
+
     # Try to locate likely GT and prediction folders automatically.
     # If not found, the user is prompted to select folders manually.
     target_folder_gt = find_folder(FOLDER_NAME_GT)
@@ -60,6 +72,11 @@ def main():
 
     folder_gt, folder_pred = result
 
+    # create a dated evaluation output folder next to the prediction folder
+    output_dir = make_evaluation_output_folder(folder_pred)
+    evaluation_date = date.today().isoformat()
+    save_evaluation_log(folder_gt, folder_pred, output_dir, evaluation_date)
+
     # collect sorted page file lists so names align when zipped
     files_gt = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
     files_pred = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
@@ -78,6 +95,8 @@ def main():
 
     # list to collect per-page metrics for CSV/JSON export and plotting
     page_metrics = []
+    references: list[str] = []
+    predictions: list[str] = []
 
     for file_gt, file_pred in zip(files_gt, files_pred):
         print(
@@ -103,6 +122,9 @@ def main():
         except OSError as e:
             print(f"Error reading {file_pred}: {e}")
             continue
+
+        references.append(reference)
+        predictions.append(predicted)
 
         # calculate raw CER/WER on the unnormalized page text
         # Raw values remain page-specific for plotting and document totals.
@@ -199,9 +221,51 @@ def main():
         f"\tWER normalized: {jiwer_wer_percentage:.2f}%\n"
     )
 
-    # Save page-wise metrics and plot the results from the same exported DataFrame.
-    df = save_metrics(page_metrics, folder_pred)
-    plot_metrics(df, folder_pred)
+    # top letter errors for the whole dataset
+    top_error_chars_raw = [
+        {"rank": i + 1, "character": char, "count": count, "percent": pct}
+        for i, (char, count, pct) in enumerate(
+            aggregate_top_error_chars(
+                references, predictions, normalize=False, top_n=10
+            )
+        )
+    ]
+    top_error_chars_normalized = [
+        {"rank": i + 1, "character": char, "count": count, "percent": pct}
+        for i, (char, count, pct) in enumerate(
+            aggregate_top_error_chars(references, predictions, normalize=True, top_n=10)
+        )
+    ]
+
+    document_metrics = {
+        "summary": {
+            "evaluation_date": evaluation_date,
+            "cer_raw": round(cer_raw_percentage, 4),
+            "wer_raw": round(wer_raw_percentage, 4),
+            "cer_normalized": round(jiwer_cer_percentage, 4),
+            "wer_normalized": round(jiwer_wer_percentage, 4),
+            "page_count": len(page_metrics),
+        },
+        "top_error_chars_raw": top_error_chars_raw,
+        "top_error_chars_normalized": top_error_chars_normalized,
+    }
+
+    print("\nTop 10 raw character errors:")
+    for item in top_error_chars_raw:
+        print(
+            f"\t{item['rank']}. '{item['character']}' — {item['count']} errors ({item['percent']:.2f}%)"
+        )
+
+    print("\nTop 10 normalized character errors:")
+    for item in top_error_chars_normalized:
+        print(
+            f"\t{item['rank']}. '{item['character']}' — {item['count']} errors ({item['percent']:.2f}%)"
+        )
+
+    # Save page-wise metrics, document-level metrics, create the plot, and build the PDF.
+    df = save_metrics(page_metrics, output_dir, document_metrics=document_metrics)
+    plot_metrics(df, output_dir)
+    create_pdf_report(df, document_metrics, output_dir)
 
 
 if __name__ == "__main__":

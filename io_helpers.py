@@ -5,8 +5,10 @@ workflow, including selecting folders via dialog, locating relevant
 folders on disk, and saving metric data to CSV/JSON.
 """
 
+import json
 import os
 import glob
+from datetime import date
 from tkinter import Tk
 from tkinter.filedialog import askdirectory
 from tkinter.messagebox import showerror
@@ -16,10 +18,10 @@ import pandas as pd
 def select_folder(initialdirectory, title):
     """Open a dialog to select a folder and return the selected path."""
 
-    Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
-    folder_selected = askdirectory(
-        initialdir=initialdirectory, title=title
-    )  # show an "Open" dialog box and return the path to the selected folder
+    # we don't want a full GUI, so keep the root window from appearing
+    Tk().withdraw()
+    # show an "Open" dialog box and return the path to the selected folder
+    folder_selected = askdirectory(initialdir=initialdirectory, title=title)
     return folder_selected
 
 
@@ -41,6 +43,7 @@ def validate_and_select_folders(
     Returns:
         Tuple of (folder_gt, folder_pred) if valid, None if user aborts.
     """
+
     while True:
         # Select GT folder
         folder_gt = select_folder(initial_dir_gt, title_gt)
@@ -87,7 +90,10 @@ def validate_and_select_folders(
 
 
 def find_folder(target_name, start_path="/home/"):
-    """Search for a folder with the specified name starting from the given path."""
+    """
+    Search for a folder with the specified name starting from the given
+    path.
+    """
 
     for root, dirs, _ in os.walk(start_path):
         if target_name in dirs:
@@ -95,20 +101,107 @@ def find_folder(target_name, start_path="/home/"):
     return None
 
 
-def save_metrics(page_metrics: list[dict], folder_pred: str) -> pd.DataFrame:
-    """Save per-page metrics to CSV/JSON and return a DataFrame.
+def save_metrics(
+    page_metrics: list[dict],
+    output_dir: str,
+    document_metrics: dict | None = None,
+) -> pd.DataFrame:
+    """Save per-page metrics to CSV/JSON and optionally document-level metrics.
 
-    Outputs are written to the parent directory of the selected prediction folder.
+    Outputs are written to the provided evaluation output directory.
     """
     df = pd.DataFrame(page_metrics)
 
-    # Write exports next to the supplied prediction folder.
-    csv_output_path = os.path.join(folder_pred, "../metrics_pagewise.csv")
+    csv_output_path = os.path.join(output_dir, "metrics_pagewise.csv")
     df.to_csv(csv_output_path, index=False)
     print(f"\nMetrics saved to CSV: {csv_output_path}")
 
-    json_output_path = os.path.join(folder_pred, "../metrics_pagewise.json")
+    json_output_path = os.path.join(output_dir, "metrics_pagewise.json")
     df.to_json(json_output_path, orient="records", indent=2)
     print(f"Metrics saved to JSON: {json_output_path}")
 
+    if document_metrics is not None:
+        save_document_metrics(document_metrics, output_dir)
+
     return df
+
+
+def save_document_metrics(document_metrics: dict, output_dir: str) -> None:
+    """Save document-level metrics and top-error metadata to CSV/JSON."""
+
+    # Write a clean JSON summary (nested structure)
+    json_output_path = os.path.join(output_dir, "metrics_document.json")
+    with open(json_output_path, "w", encoding="utf-8") as json_file:
+        json.dump(document_metrics, json_file, indent=2, ensure_ascii=False)
+    print(f"Document metrics saved to JSON: {json_output_path}")
+
+    # Export human-friendly CSV files: summary and two top-letter tables
+    summary = document_metrics.get("summary", {})
+    summary_rows = [{"metric": k, "value": v} for k, v in summary.items()]
+    summary_csv_path = os.path.join(output_dir, "metrics_document_summary.csv")
+    pd.DataFrame(summary_rows).to_csv(summary_csv_path, index=False)
+    print(f"Document summary saved to CSV: {summary_csv_path}")
+
+    def _write_top_table(section_name: str, filename: str):
+        items = document_metrics.get(section_name, [])
+        if not items:
+            return
+        table_rows = [
+            {
+                "rank": it.get("rank"),
+                "character": it.get("character"),
+                "count": it.get("count"),
+                "percent": it.get("percent"),
+            }
+            for it in items
+        ]
+        out_path = os.path.join(output_dir, filename)
+        pd.DataFrame(table_rows).to_csv(out_path, index=False)
+        print(f"{section_name} saved to CSV: {out_path}")
+
+    _write_top_table("top_error_chars_raw", "metrics_document_top_raw.csv")
+    _write_top_table(
+        "top_error_chars_normalized", "metrics_document_top_normalized.csv"
+    )
+
+
+def make_evaluation_output_folder(folder_pred: str) -> str:
+    """Create a dated evaluation folder next to the prediction folder."""
+    parent_dir = os.path.dirname(folder_pred)
+    evaluation_folder = os.path.join(
+        parent_dir, f"evaluation_{date.today().isoformat()}"
+    )
+    os.makedirs(evaluation_folder, exist_ok=True)
+    return evaluation_folder
+
+
+def save_evaluation_log(
+    folder_gt: str,
+    folder_pred: str,
+    output_dir: str,
+    evaluation_date: str | None = None,
+) -> None:
+    """
+    Save an evaluation log containing folder metadata and evaluation
+    date.
+    """
+
+    log_date = evaluation_date if evaluation_date else date.today().isoformat()
+    gold_files = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
+    pred_files = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
+    txt_output_path = os.path.join(output_dir, "evaluation_log.txt")
+    with open(txt_output_path, "w", encoding="utf-8") as txt_file:
+        txt_file.write("Evaluation Log\n")
+        txt_file.write("===============\n")
+        txt_file.write(f"Evaluation date: {log_date}\n")
+        txt_file.write(f"Goldstandard folder: {folder_gt}\n")
+        txt_file.write(f"Prediction folder: {folder_pred}\n")
+        txt_file.write(f"Export folder: {output_dir}\n")
+        txt_file.write(f"Page count: {len(gold_files)}\n")
+        txt_file.write("\nGround truth files:\n")
+        for file_name in [os.path.basename(path) for path in gold_files]:
+            txt_file.write(f"  - {file_name}\n")
+        txt_file.write("\nPrediction files:\n")
+        for file_name in [os.path.basename(path) for path in pred_files]:
+            txt_file.write(f"  - {file_name}\n")
+    print(f"Evaluation log saved to: {txt_output_path}")
