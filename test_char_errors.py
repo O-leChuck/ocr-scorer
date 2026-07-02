@@ -32,12 +32,17 @@ class TestCharErrorCounting(unittest.TestCase):
         self.assertIn(("o", 1), top)
 
     def test_aggregate_counts(self):
-        """Verify that aggregate counts across multiple pairs are correct."""
+        """
+        Verify that aggregate counts across multiple pairs are correct.
+        """
+
         refs = ["abc", "abcd"]
         hyps = ["abX", "abXd"]
         agg = aggregate_top_error_chars(refs, hyps, normalize=False, top_n=3)
-        # 'c' and 'c' from first and second sequence count as two errors for 'c'
-        # 'c' appears once as deletion/substitution depending; check that we have entries
+        # 'c' and 'c' from first and second sequence count as two
+        # errors for 'c'
+        # 'c' appears once as deletion/substitution depending; check
+        # that we have entries
         self.assertTrue(len(agg) >= 1)
 
 

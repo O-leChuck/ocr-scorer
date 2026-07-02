@@ -186,11 +186,11 @@ def _count_char_errors_from_editops(ref: str, hyp: str) -> Counter:
     for op, i, _ in ops:
         if op == "replace":
             # substitution: ref char at i replaced by hyp char at j
-            if i < len(ref):
+            if i < len(ref) and ref[i].isalpha():
                 counts[ref[i]] += 1
         elif op == "delete":
             # deletion: ref char at i was deleted in hypothesis
-            if i < len(ref):
+            if i < len(ref) and ref[i].isalpha():
                 counts[ref[i]] += 1
         # insertions are not attributed to a reference char
     return counts
@@ -234,12 +234,15 @@ def aggregate_top_error_chars(
     normalize: bool = False,
     top_n: int = 10,
 ) -> List[Tuple[str, int, float]]:
-    """Aggregate character error counts across multiple reference/prediction pairs.
+    """
+    Aggregate character error counts across multiple reference/
+    prediction pairs.
 
-    Returns a list of tuples: (character, count, percent_of_all_ref-errors).
-    Only substitutions and deletions (i.e., errors that map to a reference
-    character) are considered. `percent_of_all_ref-errors` is relative to the
-    total number of reference-attributed errors.
+    Returns a list of tuples: (character, count,
+    percent_of_all_ref-errors). Only substitutions and deletions (i.e.,
+    errors that map to a reference character) are considered.
+    `percent_of_all_ref-errors` is relative to the total number of
+    reference-attributed errors.
     """
     total_counts: Counter = Counter()
     for ref, hyp in zip(references, predictions):
