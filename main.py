@@ -12,6 +12,7 @@ The results are saved in CSV and JSON formats, and a visualization of
 
 import glob
 import os
+from datetime import date
 from io_helpers import (
     find_folder,
     make_evaluation_output_folder,
@@ -19,7 +20,6 @@ from io_helpers import (
     save_metrics,
     validate_and_select_folders,
 )
-from datetime import date
 from metrics import (
     aggregate_top_error_chars,
     calculate_lev_dist_text,
@@ -72,14 +72,18 @@ def main():
 
     folder_gt, folder_pred = result
 
+    # collect sorted page file lists so names align when zipped
+    files_gt = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
+    files_pred = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
+
+    if not files_gt:
+        print("No .txt files found in the selected folders. Nothing to evaluate.")
+        return
+
     # create a dated evaluation output folder next to the prediction folder
     output_dir = make_evaluation_output_folder(folder_pred)
     evaluation_date = date.today().isoformat()
     save_evaluation_log(folder_gt, folder_pred, output_dir, evaluation_date)
-
-    # collect sorted page file lists so names align when zipped
-    files_gt = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
-    files_pred = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
 
     # counting variables for document-wide totals
     # Raw totals are normalized at the end by total reference length.
@@ -104,7 +108,9 @@ def main():
             f"\tfile_pred: {file_pred}"
         )
         try:
-            with open(file_gt, "r", encoding="utf-8", errors="replace") as ref_file:
+            with open(
+                file_gt, "r", encoding="utf-8", errors="replace"
+            ) as ref_file:
                 reference = ref_file.read()
         except FileNotFoundError:
             print(f"File not found: {file_gt}")
@@ -114,7 +120,9 @@ def main():
             continue
 
         try:
-            with open(file_pred, "r", encoding="utf-8", errors="replace") as pred_file:
+            with open(
+                file_pred, "r", encoding="utf-8", errors="replace"
+            ) as pred_file:
                 predicted = pred_file.read()
         except FileNotFoundError:
             print(f"File not found: {file_pred}")
@@ -151,7 +159,9 @@ def main():
             else lev_dist_raw_words_page
         ) * 100
 
-        cer_jiwer_page, wer_jiwer_page = calculate_jiwer_metrics(reference, predicted)
+        cer_jiwer_page, wer_jiwer_page = calculate_jiwer_metrics(
+            reference, predicted
+        )
         # Count normalized edits and normalized reference lengths per page.
         # These totals are summed across pages for the final aggregate.
         (
@@ -179,26 +189,38 @@ def main():
             }
         )
 
-    # Normalize the document-wide raw CER scores by dividing by the total reference character count.
+    if not page_metrics:
+        print(
+            "No pages could be read (all files failed to open). Nothing to evaluate."
+        )
+        return
+
+    # Normalize the document-wide raw CER scores by dividing by the
+    # total reference character count.
     try:
         lev_dist_raw_accumulated /= chars_gt_accumulated
     except ZeroDivisionError:
         print("Warning: No characters in GT! Cannot calculate raw CER.")
 
-    # Normalize the document-wide raw WER scores by dividing by the total reference word count.
+    # Normalize the document-wide raw WER scores by dividing by the
+    # total reference word count.
     try:
         lev_dist_raw_words_accumulated /= words_gt_accumulated
     except ZeroDivisionError:
         print("Warning: No words in GT! Cannot calculate raw WER.")
 
-    # Aggregate jiwer-normalized counts across pages instead of concatenate text.
+    # Aggregate jiwer-normalized counts across pages instead of
+    # concatenate text.
     try:
         jiwer_cer_percentage = (
             jiwer_char_edits_accumulated / jiwer_ref_chars_accumulated
         ) * 100
     except ZeroDivisionError:
         jiwer_cer_percentage = 0.0
-        print("Warning: No normalized reference characters available for jiwer CER.")
+        print(
+            "Warning: No normalized reference characters available for jiwer "
+            "CER."
+        )
 
     try:
         jiwer_wer_percentage = (
@@ -206,7 +228,9 @@ def main():
         ) * 100
     except ZeroDivisionError:
         jiwer_wer_percentage = 0.0
-        print("Warning: No normalized reference words available for jiwer WER.")
+        print(
+            "Warning: No normalized reference words available for jiwer WER."
+        )
 
     # calculate percentages
     cer_raw_percentage = lev_dist_raw_accumulated * 100
@@ -234,7 +258,9 @@ def main():
     top_error_chars_normalized = [
         {"rank": i + 1, "character": char, "count": count, "percent": pct}
         for i, (char, count, pct) in enumerate(
-            aggregate_top_error_chars(references, predictions, normalize=True, top_n=10)
+            aggregate_top_error_chars(
+                references, predictions, normalize=True, top_n=10
+            )
         )
     ]
 
@@ -254,17 +280,22 @@ def main():
     print("\nTop 10 raw character errors:")
     for item in top_error_chars_raw:
         print(
-            f"\t{item['rank']}. '{item['character']}' — {item['count']} errors ({item['percent']:.2f}%)"
+            f"\t{item['rank']}. '{item['character']}' — {item['count']} "
+            f"errors ({item['percent']:.2f}%)"
         )
 
     print("\nTop 10 normalized character errors:")
     for item in top_error_chars_normalized:
         print(
-            f"\t{item['rank']}. '{item['character']}' — {item['count']} errors ({item['percent']:.2f}%)"
+            f"\t{item['rank']}. '{item['character']}' — {item['count']} "
+            f"errors ({item['percent']:.2f}%)"
         )
 
-    # Save page-wise metrics, document-level metrics, create the plot, and build the PDF.
-    df = save_metrics(page_metrics, output_dir, document_metrics=document_metrics)
+    # Save page-wise metrics, document-level metrics, create the plot,
+    # and build the PDF.
+    df = save_metrics(
+        page_metrics, output_dir, document_metrics=document_metrics
+    )
     plot_metrics(df, output_dir)
     create_pdf_report(df, document_metrics, output_dir)
 

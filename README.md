@@ -10,7 +10,7 @@ The script supports two evaluation regimes:
 
 1. **Raw whitespace evaluation**
    - No normalization, no lowercasing, no punctuation removal
-   - Uses Python `split()` on raw text to seperate words, de facto removing whitespace of any kind, leaving it out of the WER evaluation
+   - Uses Python `split()` on raw text to separate words, de facto removing whitespace of any kind, leaving it out of the WER evaluation
    - Calculates:
      - CER raw
      - WER raw
@@ -28,8 +28,14 @@ The script supports two evaluation regimes:
 
 - `main.py` - main scoring script
 - `io_helpers.py` - folder selection and metric export helper functions
+- `metrics.py` - CER/WER calculation and character-error analysis
+- `plotting.py` - chart and PDF report generation
 - `requirements.txt` - Python package requirements
 - `README.md` - usage and documentation
+
+## Requirements
+
+- Python 3.10 or newer
 
 ## Usage
 
@@ -47,17 +53,84 @@ pip install -r requirements.txt
 python main.py
 ```
 
-4. Select the GT folder and the prediction folder when prompted.
+Alternatively, you can install the tool itself (`pip install -e .`), which
+also gives you an `ocr-scorer` command you can run from anywhere.
+
+4. Select the Goldstandard (ground truth) folder and the prediction folder
+   when prompted. Both folders must contain the same number of `.txt` files
+   - if the counts don't match, you'll get an error dialog and a chance to
+   pick again.
+
+   Note: the folder picker starts from a couple of hardcoded default paths
+   (used for the project this tool was originally built for). If they don't
+   exist on your machine, the dialog simply opens at a fallback location -
+   just navigate to your own folders as usual.
+
+### Important: how pages are matched
+
+The script pairs up ground-truth and prediction files by **sorted position**,
+not by filename - the first (alphabetically sorted) `.txt` file in the GT
+folder is compared against the first sorted `.txt` file in the prediction
+folder, and so on. Filenames themselves can differ between the two folders.
+
+This means you must make sure that:
+
+- Both folders contain exactly one file per page, with no pages missing or
+  duplicated.
+- Files sort into the same page order in both folders. Zero-padded page
+  numbers (`page_001.txt`, `page_002.txt`, ...) are a safe way to ensure
+  this; `page_2.txt` sorting before `page_10.txt` is a common source of
+  silent misalignment.
+
+If a page is missing from one folder while an unrelated extra file exists in
+the other, the file *counts* can still match while the actual page pairing
+is wrong - the tool has no way to detect this, so double-check your input
+folders before relying on the results.
 
 ## Output
 
-The script saves:
+Each run creates a new, dated subfolder next to the selected prediction
+folder, named `evaluation_YYYY-MM-DD` (using the current date). Results are
+never overwritten in place, so you can re-run the tool multiple times per
+day/dataset without losing earlier results (running it twice on the same day
+does overwrite that day's folder, though).
 
-- `metrics_pagewise.csv`
-- `metrics_pagewise.json`
-- `metrics_visualization.png`
+That folder contains:
 
-These files are written to the parent directory of the selected prediction folder.
+- `evaluation_log.txt` - which GT/prediction folders were used, the
+  evaluation date, and the list of files that were scored
+- `metrics_pagewise.csv` / `metrics_pagewise.json` - CER/WER per page, both
+  raw and jiwer-normalized
+- `metrics_document.json` - a single nested summary: overall CER/WER plus
+  the top recurring error characters (see below)
+- `metrics_document_summary.csv` - the document-wide CER/WER summary as a
+  flat table
+- `metrics_document_top_raw.csv` / `metrics_document_top_normalized.csv` -
+  the characters most often misrecognized, raw and normalized (only written
+  if there are any attributable errors)
+- `metrics_visualization.png` - a chart of CER/WER per page
+- `evaluation_report.pdf` - a one-file report combining the summary, the
+  top-error tables, and the chart, suitable for sharing or archiving
+
+### About the "top error characters" report
+
+This report counts, per reference character, how often it was substituted
+for the wrong character or dropped entirely (deletions), then ranks the 10
+most frequent offenders. Two caveats:
+
+- Only alphabetic reference characters are counted - digits, punctuation,
+  and other symbols are excluded, even if the OCR got them wrong. If you're
+  evaluating heavily numeric or symbol-heavy material, this report won't
+  reflect those errors.
+- Extra characters the OCR *inserted* that don't correspond to any ground
+  truth character aren't attributed to anything, since there's no
+  reference character to blame them on.
+
+## Known limitations
+
+- Pages where the ground-truth text is completely empty currently produce
+  misleadingly large CER/WER values for that page (well above 100%) instead
+  of being excluded or flagged. This is a known issue and is being revisited.
 
 ## Metric details
 
@@ -71,54 +144,55 @@ These files are written to the parent directory of the selected prediction folde
 
 ### Normalized jiwer evaluation
 
-- Uses a custom `jiwer` transform pipeline with lowercasing and punctuation removal.
+- Uses a custom `jiwer` transform pipeline with lowercasing and punctuation handling (removed for CER, replaced with a space for WER - see [Normalization Details](#normalization-details)).
 - **Aggregation method:** Sums character/word edit counts across all pages, then divides by total normalized reference characters/words. This approach is suitable for randomly-sampled page-level evaluation.
 - **CER Normalized:** Sum of normalized character edits / sum of normalized reference characters
 - **WER Normalized:** Sum of normalized word edits / sum of normalized reference words
 
 ### Normalization Details
 
-The script currently applies a custom jiwer transform pipeline for both CER and WER. The following transforms are used:
-
-1. **ToLowerCase()** - Converts all text to lowercase
-2. **RemovePunctuation()** - Removes all Unicode punctuation (categories Po, Pd, Ps, Pe, Pi, Pf, Pc)
-3. **Strip()** - Removes leading and trailing whitespace
+CER and WER use similar but not identical transform pipelines - the key
+difference is how each one handles punctuation.
 
 #### Character Error Rate (CER) Normalization
 
-After the common transforms, the script applies:
-
-1. **ReduceToListOfListOfChars()** - Converts the normalized text to a list of characters for CER calculation
+1. **ToLowerCase()** - Converts all text to lowercase
+2. **RemovePunctuation()** - Removes all Unicode punctuation entirely (categories Po, Pd, Ps, Pe, Pi, Pf, Pc)
+3. **Strip()** - Removes leading and trailing whitespace
+4. **ReduceToListOfListOfChars()** - Converts the normalized text to a list of characters for CER calculation
 
 #### Word Error Rate (WER) Normalization
 
-After the common transforms, the script applies:
+1. **ToLowerCase()** - Converts all text to lowercase
+2. **ReplacePunctuationWithSpace()** - Replaces Unicode punctuation with a space, instead of removing it, so that punctuation-separated words don't get merged together (`"high-quality"` → `"high quality"`, not `"highquality"`)
+3. **RemoveMultipleSpaces()** - Collapses multiple consecutive spaces into a single space (this also cleans up any doubled-up spaces the previous step may have introduced)
+4. **Strip()** - Removes leading and trailing whitespace
+5. **ReduceToListOfListOfWords()** - Splits the normalized text into words using whitespace tokenization
 
-1. **RemoveMultipleSpaces()** - Collapses multiple consecutive spaces into a single space
-2. **ReduceToListOfListOfWords()** - Splits the normalized text into words using whitespace tokenization
+This means punctuation that sits *between* words (like a hyphen) affects CER and WER differently: WER treats the two sides as separate words that can still match, while CER only sees the punctuation being deleted, which is now a genuine character-level difference.
 
-#### What punctuation is removed?
+#### What punctuation is affected?
 
-`RemovePunctuation()` strips characters whose Unicode category begins with `P`, including:
+Both transforms act on characters whose Unicode category begins with `P`, including:
 - ASCII punctuation: `! " # % & ' ( ) * + , - . / : ; < = > ? @ [ \ ] ^ _ ` { | } ~`
 - Dash punctuation: `-`, `–`, `—`, `‑`, etc.
 - Quotes and brackets: `"`, `''`, `«`, `»`, `‹`, `›`, `(`, `)`, `[`, `]`, `{`, `}`
 - Many historic punctuation marks and typographic symbols that are classified in Unicode as punctuation
 
-It does not remove symbols that are not classified as punctuation by Unicode, such as currency signs, math operators, or letter-like marks.
+Neither transform touches symbols that are not classified as punctuation by Unicode, such as currency signs, math operators, or letter-like marks.
 
-This means the current normalized regime is more aggressive than plain whitespace normalization: it lowercases text and removes punctuation while still counting real additions, deletions, and substitutions.
+This means the current normalized regime is more aggressive than plain whitespace normalization: it lowercases text and strips/converts punctuation while still counting real additions, deletions, and substitutions.
 
-If the exact shape of historic punctuation is important, preserve it by removing `RemovePunctuation()` from the custom transform pipeline in `metrics.py`.
+If the exact shape of historic punctuation is important to your evaluation, preserve it by removing `RemovePunctuation()` (for CER) and/or `ReplacePunctuationWithSpace()` (for WER) from the custom transform pipelines in `metrics.py`.
 
 #### Why normalized may still differ from raw only a little
 
 If your raw and normalized results are similar, it likely means:
 - Your OCR output already has consistent formatting and spacing
 - The remaining errors are actual transcription mistakes rather than punctuation/case differences
-- The pipeline removes punctuation and lowercases text, but still counts real additions, deletions, and substitutions
+- The pipeline removes/converts punctuation and lowercases text, but still counts real additions, deletions, and substitutions
 
-If you want a different normalization behavior, you can modify `metrics.py` to adjust the jiwer transform pipeline.
+If you want a different normalization behavior, you can modify `metrics.py` to adjust the jiwer transform pipelines.
 
 ## Example: Raw vs. Normalized
 
@@ -128,7 +202,7 @@ If you want a different normalization behavior, you can modify `metrics.py` to a
 | Leading/trailing spaces | ` word ` | `word` | Counts as different if exact string match used | Counts as match | Strip() removes spaces before comparison |
 | Capitalization | `Hello` | `hello` | Word mismatch | Match | Lowercasing makes the words equal |
 | Punctuation | `Hello.` | `Hello` | Word mismatch | Match | Punctuation removal makes the tokens equal |
-| Hyphenation | `high-quality` | `high quality` | 2 different words | 2 different words | Hyphenation is not normalized; the words remain different |
+| Hyphenation | `high-quality` | `high quality` | 2 different words | Match (0% WER) | `ReplacePunctuationWithSpace()` turns the hyphen into a space, so both sides tokenize to `["high", "quality"]`. Note CER is *not* fully normalized here (~9% CER remains), since CER's `RemovePunctuation()` deletes the hyphen instead of replacing it with a space, leaving `"highquality"` vs `"high quality"`. |
 
 ### When normalized and raw differ
 
@@ -144,14 +218,20 @@ The normalized metrics will be similar to raw if:
 
 ### Customizing normalization
 
-The current script already applies a custom jiwer pipeline with lowercasing, punctuation removal, whitespace normalization, and page-level aggregation.
+The current script already applies a custom jiwer pipeline with lowercasing, punctuation handling, whitespace normalization, and page-level aggregation.
 
 To change this behavior, edit [metrics.py](metrics.py) and adjust the `cer_custom_transform` and `wer_custom_transform` pipelines.
 
-For example, to preserve punctuation for historic documents, remove `RemovePunctuation()` from the pipeline:
+For example, to preserve punctuation for historic documents, drop the punctuation step from each pipeline:
 
 ```python
-from jiwer import Compose, ToLowerCase, Strip, RemoveMultipleSpaces, ReduceToListOfListOfWords
+from jiwer import Compose, ToLowerCase, Strip, RemoveMultipleSpaces, ReduceToListOfListOfWords, ReduceToListOfListOfChars
+
+cer_custom_transform = Compose([
+    ToLowerCase(),
+    Strip(),
+    ReduceToListOfListOfChars(),
+])
 
 wer_custom_transform = Compose([
     ToLowerCase(),
@@ -161,11 +241,15 @@ wer_custom_transform = Compose([
 ])
 ```
 
-Then pass the custom transforms to `jiwer.wer()` and `jiwer.cer()` via `reference_transform` and `hypothesis_transform`.
+These are the same `cer_custom_transform`/`wer_custom_transform` objects already used by `calculate_jiwer_metrics()` and `calculate_jiwer_counts()` in `metrics.py`, so editing them there is enough - no other code needs to change.
 
 ## Notes
 
 - The raw regime is useful for exact whitespace/tokenization-sensitive comparisons.
-- The normalized regime now applies lowercasing and punctuation removal in addition to whitespace normalization.
+- The normalized regime applies lowercasing and punctuation handling (removed for CER, replaced with a space for WER) in addition to whitespace normalization.
 - If normalized and raw results are very similar, your OCR output likely has consistent formatting and the remaining errors are actual transcription differences.
 - Modify `metrics.py` if you want a different normalization pipeline.
+
+## License
+
+MIT - see [LICENSE](LICENSE).

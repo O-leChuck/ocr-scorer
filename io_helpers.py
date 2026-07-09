@@ -19,9 +19,13 @@ def select_folder(initialdirectory, title):
     """Open a dialog to select a folder and return the selected path."""
 
     # we don't want a full GUI, so keep the root window from appearing
-    Tk().withdraw()
-    # show an "Open" dialog box and return the path to the selected folder
-    folder_selected = askdirectory(initialdir=initialdirectory, title=title)
+    root = Tk()
+    root.withdraw()
+    try:
+        # show an "Open" dialog box and return the path to the selected folder
+        folder_selected = askdirectory(initialdir=initialdirectory, title=title)
+    finally:
+        root.destroy()
     return folder_selected
 
 
@@ -85,7 +89,6 @@ def validate_and_select_folders(
 
             # Keep the last selected directories as defaults for next attempt
             initial_dir_gt = folder_gt
-            initial_dir_pred = folder_pred
             initial_dir_pred = folder_pred
 
 
@@ -166,7 +169,10 @@ def save_document_metrics(document_metrics: dict, output_dir: str) -> None:
 
 
 def make_evaluation_output_folder(folder_pred: str) -> str:
-    """Create a dated evaluation folder next to the prediction folder."""
+    """
+    Create a dated evaluation folder next to the prediction folder.
+    """
+
     parent_dir = os.path.dirname(folder_pred)
     evaluation_folder = os.path.join(
         parent_dir, f"evaluation_{date.today().isoformat()}"

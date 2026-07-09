@@ -3,14 +3,25 @@ Unit tests for I/O helper functions.
 
 This module verifies the folder selection and validation behavior,
 particularly the validate_and_select_folders function which ensures
-matching file counts between GT and prediction folders.
+matching file counts between GT and prediction folders, plus the
+metric/log export helpers.
 """
 
+import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
-from io_helpers import validate_and_select_folders
+from unittest.mock import MagicMock, patch
+
+from io_helpers import (
+    find_folder,
+    make_evaluation_output_folder,
+    save_document_metrics,
+    save_evaluation_log,
+    save_metrics,
+    select_folder,
+    validate_and_select_folders,
+)
 
 
 class TestValidateAndSelectFolders(unittest.TestCase):
@@ -159,10 +170,16 @@ class TestValidateAndSelectFolders(unittest.TestCase):
             call_args_list.append(initial_dir)
             if len(call_args_list) <= 2:
                 # First attempt: use mismatched directories
-                return self.gt_dir if len(call_args_list) == 1 else self.pred_dir
+                return (
+                    self.gt_dir if len(call_args_list) == 1 else self.pred_dir
+                )
             else:
                 # Second attempt: use fixed directories
-                return gt_dir_fixed if len(call_args_list) == 3 else pred_dir_fixed
+                return (
+                    gt_dir_fixed
+                    if len(call_args_list) == 3
+                    else pred_dir_fixed
+                )
 
         mock_select.side_effect = track_calls
 
@@ -173,7 +190,8 @@ class TestValidateAndSelectFolders(unittest.TestCase):
         self.assertIsNotNone(result)
         # On retry, the initial_dir should be the last selected folder
         # (not the original temp_path)
-        self.assertEqual(call_args_list[2], self.gt_dir)  # Retry uses gt_dir as default
+        # Retry uses gt_dir as default
+        self.assertEqual(call_args_list[2], self.gt_dir)
         self.assertEqual(
             call_args_list[3], self.pred_dir
         )  # Retry uses pred_dir as default
@@ -185,7 +203,9 @@ class TestValidateAndSelectFolders(unittest.TestCase):
         self._create_text_files(self.pred_dir, 3)
 
         # Add non-.txt files that shouldn't be counted
-        with open(os.path.join(self.gt_dir, "readme.md"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(self.gt_dir, "readme.md"), "w", encoding="utf-8"
+        ) as f:
             f.write("readme")
         with open(
             os.path.join(self.pred_dir, "metadata.json"), "w", encoding="utf-8"
@@ -201,6 +221,279 @@ class TestValidateAndSelectFolders(unittest.TestCase):
         # Should still match because only .txt files are counted
         self.assertIsNotNone(result)
         self.assertEqual(result, (self.gt_dir, self.pred_dir))
+
+
+class TestSelectFolder(unittest.TestCase):
+    """Unit tests for select_folder's Tk lifecycle management."""
+
+    @patch("io_helpers.askdirectory")
+    @patch("io_helpers.Tk")
+    def test_tk_root_is_withdrawn_and_destroyed(
+        self, mock_tk_cls, mock_askdirectory
+    ):
+        """
+        Test that the Tk root window is withdrawn and destroyed properly.
+        """
+
+        mock_root = MagicMock()
+        mock_tk_cls.return_value = mock_root
+        mock_askdirectory.return_value = "/some/folder"
+
+        result = select_folder("/initial", "Select a folder")
+
+        self.assertEqual(result, "/some/folder")
+        mock_root.withdraw.assert_called_once()
+        mock_root.destroy.assert_called_once()
+
+    @patch("io_helpers.askdirectory")
+    @patch("io_helpers.Tk")
+    def test_tk_root_is_destroyed_even_if_dialog_raises(
+        self, mock_tk_cls, mock_askdirectory
+    ):
+        mock_root = MagicMock()
+        mock_tk_cls.return_value = mock_root
+        mock_askdirectory.side_effect = RuntimeError("dialog failed")
+
+        with self.assertRaises(RuntimeError):
+            select_folder("/initial", "Select a folder")
+
+        mock_root.destroy.assert_called_once()
+
+
+class TestFindFolder(unittest.TestCase):
+    """Unit tests for locating a named folder under a search root."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_path = self.temp_dir.name
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_finds_folder_in_nested_directory(self):
+        """
+        Test that find_folder locates a folder nested under the start path.
+        """
+        target = os.path.join(self.temp_path, "a", "b", "Goldstandard")
+        os.makedirs(target)
+
+        found = find_folder("Goldstandard", start_path=self.temp_path)
+
+        self.assertEqual(found, target)
+
+    def test_returns_none_when_not_found(self):
+        os.makedirs(os.path.join(self.temp_path, "unrelated"))
+
+        found = find_folder("Goldstandard", start_path=self.temp_path)
+
+        self.assertIsNone(found)
+
+
+class TestSaveMetrics(unittest.TestCase):
+    """Unit tests for page-wise CSV/JSON export."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.output_dir = self.temp_dir.name
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_writes_csv_and_json_with_expected_rows(self):
+        page_metrics = [
+            {
+                "page": "page-01",
+                "cer_raw": 0.0,
+                "wer_raw": 0.0,
+                "cer_jiwer_normalized": 0.0,
+                "wer_jiwer_normalized": 0.0,
+            },
+            {
+                "page": "page-02",
+                "cer_raw": 5.5,
+                "wer_raw": 10.0,
+                "cer_jiwer_normalized": 4.0,
+                "wer_jiwer_normalized": 8.0,
+            },
+        ]
+
+        df = save_metrics(page_metrics, self.output_dir)
+
+        self.assertEqual(len(df), 2)
+        csv_path = os.path.join(self.output_dir, "metrics_pagewise.csv")
+        json_path = os.path.join(self.output_dir, "metrics_pagewise.json")
+        self.assertTrue(os.path.isfile(csv_path))
+        self.assertTrue(os.path.isfile(json_path))
+
+        with open(json_path, encoding="utf-8") as f:
+            records = json.load(f)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[1]["page"], "page-02")
+        self.assertEqual(records[1]["cer_raw"], 5.5)
+
+    def test_document_metrics_are_saved_when_provided(self):
+        document_metrics = {
+            "summary": {"cer_raw": 1.23, "page_count": 1},
+            "top_error_chars_raw": [
+                {"rank": 1, "character": "a", "count": 3, "percent": 100.0}
+            ],
+            "top_error_chars_normalized": [],
+        }
+
+        save_metrics(
+            [
+                {
+                    "page": "p1",
+                    "cer_raw": 0,
+                    "wer_raw": 0,
+                    "cer_jiwer_normalized": 0,
+                    "wer_jiwer_normalized": 0,
+                }
+            ],
+            self.output_dir,
+            document_metrics=document_metrics,
+        )
+
+        self.assertTrue(
+            os.path.isfile(
+                os.path.join(self.output_dir, "metrics_document.json")
+            )
+        )
+        self.assertTrue(
+            os.path.isfile(
+                os.path.join(self.output_dir, "metrics_document_summary.csv")
+            )
+        )
+        self.assertTrue(
+            os.path.isfile(
+                os.path.join(self.output_dir, "metrics_document_top_raw.csv")
+            )
+        )
+        # empty sections are skipped rather than writing an empty file
+        self.assertFalse(
+            os.path.isfile(
+                os.path.join(
+                    self.output_dir, "metrics_document_top_normalized.csv"
+                )
+            )
+        )
+
+
+class TestSaveDocumentMetrics(unittest.TestCase):
+    """Unit tests for document-level metric export."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.output_dir = self.temp_dir.name
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_json_summary_round_trips(self):
+        document_metrics = {
+            "summary": {"cer_raw": 2.5, "wer_raw": 4.0, "page_count": 3},
+            "top_error_chars_raw": [
+                {"rank": 1, "character": "e", "count": 10, "percent": 50.0}
+            ],
+            "top_error_chars_normalized": [
+                {"rank": 1, "character": "e", "count": 8, "percent": 40.0}
+            ],
+        }
+
+        save_document_metrics(document_metrics, self.output_dir)
+
+        json_path = os.path.join(self.output_dir, "metrics_document.json")
+        with open(json_path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        self.assertEqual(loaded, document_metrics)
+
+        summary_csv = os.path.join(
+            self.output_dir, "metrics_document_summary.csv"
+        )
+        top_raw_csv = os.path.join(
+            self.output_dir, "metrics_document_top_raw.csv"
+        )
+        top_norm_csv = os.path.join(
+            self.output_dir, "metrics_document_top_normalized.csv"
+        )
+        self.assertTrue(os.path.isfile(summary_csv))
+        self.assertTrue(os.path.isfile(top_raw_csv))
+        self.assertTrue(os.path.isfile(top_norm_csv))
+
+
+class TestMakeEvaluationOutputFolder(unittest.TestCase):
+    """Unit tests for the dated evaluation output folder helper."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_path = self.temp_dir.name
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_creates_dated_folder_next_to_prediction_folder(self):
+        pred_folder = os.path.join(self.temp_path, "predictions")
+        os.makedirs(pred_folder)
+
+        output_dir = make_evaluation_output_folder(pred_folder)
+
+        self.assertTrue(os.path.isdir(output_dir))
+        self.assertEqual(os.path.dirname(output_dir), self.temp_path)
+        self.assertTrue(os.path.basename(output_dir).startswith("evaluation_"))
+
+    def test_is_idempotent_when_called_twice(self):
+        pred_folder = os.path.join(self.temp_path, "predictions")
+        os.makedirs(pred_folder)
+
+        first = make_evaluation_output_folder(pred_folder)
+        second = make_evaluation_output_folder(pred_folder)
+
+        self.assertEqual(first, second)
+
+
+class TestSaveEvaluationLog(unittest.TestCase):
+    """Unit tests for the evaluation log text export."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_path = self.temp_dir.name
+        self.gt_dir = os.path.join(self.temp_path, "gt")
+        self.pred_dir = os.path.join(self.temp_path, "pred")
+        self.output_dir = os.path.join(self.temp_path, "out")
+        os.makedirs(self.gt_dir)
+        os.makedirs(self.pred_dir)
+        os.makedirs(self.output_dir)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_log_contains_folder_metadata_and_file_lists(self):
+        for name in ("a.txt", "b.txt"):
+            open(
+                os.path.join(self.gt_dir, name), "w", encoding="utf-8"
+            ).close()
+            open(
+                os.path.join(self.pred_dir, name), "w", encoding="utf-8"
+            ).close()
+
+        save_evaluation_log(
+            self.gt_dir,
+            self.pred_dir,
+            self.output_dir,
+            evaluation_date="2026-01-01",
+        )
+
+        log_path = os.path.join(self.output_dir, "evaluation_log.txt")
+        self.assertTrue(os.path.isfile(log_path))
+        with open(log_path, encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("Evaluation date: 2026-01-01", content)
+        self.assertIn(self.gt_dir, content)
+        self.assertIn(self.pred_dir, content)
+        self.assertIn("Page count: 2", content)
+        self.assertIn("a.txt", content)
+        self.assertIn("b.txt", content)
 
 
 if __name__ == "__main__":
