@@ -100,7 +100,8 @@ def main():
 
     for file_gt, file_pred in zip(files_gt, files_pred):
         print(
-            f"calculate cer/wer of files:\nfile_gt: \t{file_gt},\n\tfile_pred: {file_pred}"
+            f"calculate cer/wer of files:\nfile_gt: \t{file_gt},\n"
+            f"\tfile_pred: {file_pred}"
         )
         try:
             with open(file_gt, "r", encoding="utf-8", errors="replace") as ref_file:

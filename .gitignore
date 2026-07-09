@@ -2,3 +2,4 @@
 .venv-ocr-scorer
 __pycache__/
 *.ipynb
+*.egg-info/

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr-scorer"
+version = "0.1.0"
+description = "Compute CER/WER between OCR predictions and ground truth text, with per-page CSV/JSON export and visualization. Aimed at digital humanities researchers evaluating OCR on historical documents."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ole Meiners", email = "ole.meiners@posteo.net" }]
+keywords = ["OCR", "CER", "WER", "digital humanities", "historical documents", "text evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "jiwer>=4.0.0",
+    "Levenshtein>=0.27.3",
+    "pandas>=2.0",
+    "matplotlib>=3.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/O-leChuck/ocr-scorer"
+Repository = "https://github.com/O-leChuck/ocr-scorer"
+Issues = "https://github.com/O-leChuck/ocr-scorer/issues"
+
+[project.scripts]
+ocr-scorer = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "io_helpers", "metrics", "plotting"]
