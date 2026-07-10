@@ -28,6 +28,7 @@ CER (case insensitive): 2.04 %
 WER (case insensitive): 10.92 % 
 
 ## DS-3_case-errors
+!!! not calculated yet !!!
 Number of character deviations between pred and gt: 0
 CER (case sensitive):   0.00 %
 WER (case sensitive):   0.00 %
@@ -35,6 +36,7 @@ CER (case insensitive): 0.00 %
 WER (case insensitive): 0.00 % 
 
 ## DS-4_edge-cases
+!!! not calculated yet !!!
 Number of character deviations between pred and gt: 0
 CER (case sensitive):   0.00 %
 WER (case sensitive):   0.00 %
@@ -42,6 +44,7 @@ CER (case insensitive): 0.00 %
 WER (case insensitive): 0.00 % 
 
 ## DS-5_empty-gt-files
+!!! not calculated yet !!!
 Number of character deviations between pred and gt: 0
 CER (case sensitive):   0.00 %
 WER (case sensitive):   0.00 %

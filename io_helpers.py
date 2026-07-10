@@ -7,12 +7,18 @@ folders on disk, and saving metric data to CSV/JSON.
 
 import json
 import os
+import re
 import glob
 from datetime import date
 from tkinter import Tk
 from tkinter.filedialog import askdirectory
 from tkinter.messagebox import showerror
 import pandas as pd
+
+# Matches a page/sequence number marked with a "p"/"page" prefix, e.g.
+# "p0004_..." -> 4, "..._p0142.txt" -> 142. Longer alternative first so
+# "page" isn't shadowed by "p" during matching.
+_PAGE_MARKER_PATTERN = re.compile(r"(?:page|p)(\d+)", re.IGNORECASE)
 
 
 def select_folder(initialdirectory, title):
@@ -23,7 +29,9 @@ def select_folder(initialdirectory, title):
     root.withdraw()
     try:
         # show an "Open" dialog box and return the path to the selected folder
-        folder_selected = askdirectory(initialdir=initialdirectory, title=title)
+        folder_selected = askdirectory(
+            initialdir=initialdirectory, title=title
+        )
     finally:
         root.destroy()
     return folder_selected
@@ -104,6 +112,69 @@ def find_folder(target_name, start_path="/home/"):
     return None
 
 
+def extract_page_number(filename: str) -> int | None:
+    """Best-effort extraction of a page number from a filename.
+
+    Prefers a digit run immediately preceded by "p" or "page"
+    (case-insensitive), e.g. "p0004_...txt" -> 4. Falls back to the
+    filename's only digit run if there is exactly one. Returns None if no
+    page number can be identified unambiguously (multiple "p"/"page"
+    markers, or multiple digit runs with no marker to disambiguate them).
+    """
+    basename = os.path.basename(filename)
+    marker_matches = _PAGE_MARKER_PATTERN.findall(basename)
+    if len(marker_matches) == 1:
+        return int(marker_matches[0])
+    if len(marker_matches) > 1:
+        return None
+
+    digit_runs = re.findall(r"\d+", basename)
+    if len(digit_runs) == 1:
+        return int(digit_runs[0])
+    return None
+
+
+def check_page_number_alignment(
+    files_gt: list[str], files_pred: list[str]
+) -> tuple[bool, list[str]]:
+    """Best-effort sanity check for the sort-order file pairing used by main.py.
+
+    Files are otherwise paired purely by their position in each sorted
+    list, since prediction filenames are not guaranteed to resemble GT
+    filenames at all. This check extracts a page number from every
+    filename (see extract_page_number) and compares them position by
+    position, as a heuristic warning - not a guarantee.
+
+    Returns (used, messages):
+      - used=True if a page number was extracted for every file in both
+        lists, so the comparison could be performed. messages then
+        contains one line per position where the extracted GT/prediction
+        page numbers disagree (empty if all positions matched).
+      - used=False if a page number could not be reliably extracted for
+        at least one file, so no comparison was made. messages is empty
+        in this case - silence is intentional to avoid false alarms from
+        an unreliable heuristic.
+    """
+    gt_numbers = [extract_page_number(f) for f in files_gt]
+    pred_numbers = [extract_page_number(f) for f in files_pred]
+
+    if any(n is None for n in gt_numbers) or any(n is None for n in pred_numbers):
+        return False, []
+
+    messages = []
+    for position, (gt_file, pred_file, gt_num, pred_num) in enumerate(
+        zip(files_gt, files_pred, gt_numbers, pred_numbers), start=1
+    ):
+        if gt_num != pred_num:
+            messages.append(
+                f"Position {position}: GT file '{os.path.basename(gt_file)}' "
+                f"(page {gt_num}) is paired with prediction file "
+                f"'{os.path.basename(pred_file)}' (page {pred_num}) - "
+                "these do not look like the same page."
+            )
+    return True, messages
+
+
 def save_metrics(
     page_metrics: list[dict],
     output_dir: str,
@@ -181,11 +252,35 @@ def make_evaluation_output_folder(folder_pred: str) -> str:
     return evaluation_folder
 
 
+def format_page_number_check_report(used: bool, messages: list[str]) -> list[str]:
+    """Format the result of check_page_number_alignment as report lines,
+    for printing to the terminal and/or writing to the evaluation log.
+    """
+    if not used:
+        return [
+            "Page-number check: could not reliably extract a page number "
+            "from every filename (ambiguous or missing numbering); this "
+            "sanity check was skipped."
+        ]
+    if not messages:
+        return [
+            "Page-number check: page numbers were extracted from every "
+            "filename, and all files appear to be correctly paired."
+        ]
+    lines = [
+        "Page-number check: page numbers were extracted from every "
+        f"filename, but {len(messages)} potential mismatch(es) were found:"
+    ]
+    lines.extend(f"  - {message}" for message in messages)
+    return lines
+
+
 def save_evaluation_log(
     folder_gt: str,
     folder_pred: str,
     output_dir: str,
     evaluation_date: str | None = None,
+    page_number_check: tuple[bool, list[str]] | None = None,
 ) -> None:
     """
     Save an evaluation log containing folder metadata and evaluation
@@ -204,6 +299,11 @@ def save_evaluation_log(
         txt_file.write(f"Prediction folder: {folder_pred}\n")
         txt_file.write(f"Export folder: {output_dir}\n")
         txt_file.write(f"Page count: {len(gold_files)}\n")
+        if page_number_check is not None:
+            used, messages = page_number_check
+            txt_file.write("\n")
+            for line in format_page_number_check_report(used, messages):
+                txt_file.write(f"{line}\n")
         txt_file.write("\nGround truth files:\n")
         for file_name in [os.path.basename(path) for path in gold_files]:
             txt_file.write(f"  - {file_name}\n")

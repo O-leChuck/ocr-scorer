@@ -14,7 +14,9 @@ import glob
 import os
 from datetime import date
 from io_helpers import (
+    check_page_number_alignment,
     find_folder,
+    format_page_number_check_report,
     make_evaluation_output_folder,
     save_evaluation_log,
     save_metrics,
@@ -77,13 +79,29 @@ def main():
     files_pred = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
 
     if not files_gt:
-        print("No .txt files found in the selected folders. Nothing to evaluate.")
+        print(
+            "No .txt files found in the selected folders. "
+            "Nothing to evaluate."
+        )
         return
+
+    # Best-effort sanity check: files are paired purely by sort position
+    # (prediction filenames aren't guaranteed to resemble GT filenames),
+    # so warn if page numbers extracted from filenames disagree.
+    page_number_check = check_page_number_alignment(files_gt, files_pred)
+    for line in format_page_number_check_report(*page_number_check):
+        print(line)
 
     # create a dated evaluation output folder next to the prediction folder
     output_dir = make_evaluation_output_folder(folder_pred)
     evaluation_date = date.today().isoformat()
-    save_evaluation_log(folder_gt, folder_pred, output_dir, evaluation_date)
+    save_evaluation_log(
+        folder_gt,
+        folder_pred,
+        output_dir,
+        evaluation_date,
+        page_number_check=page_number_check,
+    )
 
     # counting variables for document-wide totals
     # Raw totals are normalized at the end by total reference length.
@@ -191,7 +209,8 @@ def main():
 
     if not page_metrics:
         print(
-            "No pages could be read (all files failed to open). Nothing to evaluate."
+            "No pages could be read (all files failed to open). "
+            "Nothing to evaluate."
         )
         return
 
