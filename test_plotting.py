@@ -54,6 +54,52 @@ class TestBuildMetricsChart(unittest.TestCase):
         self.assertEqual(len(fig.axes[0].lines), 4)
         plt.close(fig)
 
+    def test_infinite_value_gets_undefined_marker_and_legend_entry(self):
+        # an empty-reference page the OCR hallucinated text onto: CER raw
+        # is +inf and must not be silently invisible in the chart
+        df = _make_df(3)
+        df.loc[1, "cer_raw"] = float("inf")
+
+        fig = build_metrics_chart(df)
+        ax = fig.axes[0]
+
+        legend_labels = [t.get_text() for t in ax.get_legend().get_texts()]
+        self.assertIn("undefined (empty reference)", legend_labels)
+        # exactly one marker collection for the undefined-value flag
+        self.assertEqual(len(ax.collections), 1)
+        # the line itself must not error out or plot an infinite y-value
+        for line in ax.lines:
+            y_data = line.get_ydata()
+            self.assertTrue(all(v != float("inf") for v in y_data))
+        plt.close(fig)
+
+    def test_nan_value_does_not_add_a_spurious_undefined_marker(self):
+        # a both-empty page (true 0/0): a plain gap in the line, not
+        # flagged the same way as a hallucination
+        df = _make_df(3)
+        df.loc[1, "cer_raw"] = float("nan")
+
+        fig = build_metrics_chart(df)
+        ax = fig.axes[0]
+
+        self.assertEqual(len(ax.collections), 0)
+        legend_labels = [t.get_text() for t in ax.get_legend().get_texts()]
+        self.assertNotIn("undefined (empty reference)", legend_labels)
+        plt.close(fig)
+
+    def test_multiple_infinite_pages_share_one_marker_series(self):
+        df = _make_df(4)
+        df.loc[1, "cer_raw"] = float("inf")
+        df.loc[3, "wer_raw"] = float("inf")
+
+        fig = build_metrics_chart(df)
+        ax = fig.axes[0]
+
+        self.assertEqual(len(ax.collections), 1)
+        marker_x = sorted(ax.collections[0].get_offsets()[:, 0])
+        self.assertEqual(marker_x, [1, 3])
+        plt.close(fig)
+
 
 class TestPlotMetrics(unittest.TestCase):
     def setUp(self):

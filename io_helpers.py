@@ -6,10 +6,12 @@ folders on disk, and saving metric data to CSV/JSON.
 """
 
 import json
+import math
 import os
 import re
 import glob
 from datetime import date
+from typing import Any
 from tkinter import Tk
 from tkinter.filedialog import askdirectory
 from tkinter.messagebox import showerror
@@ -62,12 +64,14 @@ def validate_and_select_folders(
         if not folder_gt:  # User clicked Cancel
             print("Folder selection cancelled by user.")
             return None
+        print(f"Selected Goldstandard folder: {folder_gt}")
 
         # Select prediction folder
         folder_pred = select_folder(initial_dir_pred, title_pred)
         if not folder_pred:  # User clicked Cancel
             print("Folder selection cancelled by user.")
             return None
+        print(f"Selected prediction folder: {folder_pred}")
 
         # Check if file counts match
         files_gt = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
@@ -158,7 +162,9 @@ def check_page_number_alignment(
     gt_numbers = [extract_page_number(f) for f in files_gt]
     pred_numbers = [extract_page_number(f) for f in files_pred]
 
-    if any(n is None for n in gt_numbers) or any(n is None for n in pred_numbers):
+    if any(n is None for n in gt_numbers) or any(
+        n is None for n in pred_numbers
+    ):
         return False, []
 
     messages = []
@@ -173,6 +179,30 @@ def check_page_number_alignment(
                 "these do not look like the same page."
             )
     return True, messages
+
+
+def _make_json_safe(value: Any) -> Any:
+    """Recursively make a value safe for strict JSON export.
+
+    JSON has no token for IEEE-754 infinity or NaN. +inf/-inf are
+    converted to the strings "Infinity"/"-Infinity" - a deliberate choice
+    so a value that must not be silently mistaken for "no data" (e.g. an
+    empty-reference page where the OCR hallucinated text) stays visible
+    and unmistakable to anyone reading the JSON, even though it means
+    that field is no longer purely numeric. NaN (a true 0/0 - nothing to
+    measure) becomes None/null, which is the standard "no value" token.
+    """
+    if isinstance(value, float):
+        if math.isinf(value):
+            return "Infinity" if value > 0 else "-Infinity"
+        if math.isnan(value):
+            return None
+        return value
+    if isinstance(value, dict):
+        return {key: _make_json_safe(v) for key, v in value.items()}
+    if isinstance(value, list):
+        return [_make_json_safe(v) for v in value]
+    return value
 
 
 def save_metrics(
@@ -191,7 +221,9 @@ def save_metrics(
     print(f"\nMetrics saved to CSV: {csv_output_path}")
 
     json_output_path = os.path.join(output_dir, "metrics_pagewise.json")
-    df.to_json(json_output_path, orient="records", indent=2)
+    json_records = _make_json_safe(df.to_dict(orient="records"))
+    with open(json_output_path, "w", encoding="utf-8") as json_file:
+        json.dump(json_records, json_file, indent=2, ensure_ascii=False)
     print(f"Metrics saved to JSON: {json_output_path}")
 
     if document_metrics is not None:
@@ -206,7 +238,12 @@ def save_document_metrics(document_metrics: dict, output_dir: str) -> None:
     # Write a clean JSON summary (nested structure)
     json_output_path = os.path.join(output_dir, "metrics_document.json")
     with open(json_output_path, "w", encoding="utf-8") as json_file:
-        json.dump(document_metrics, json_file, indent=2, ensure_ascii=False)
+        json.dump(
+            _make_json_safe(document_metrics),
+            json_file,
+            indent=2,
+            ensure_ascii=False,
+        )
     print(f"Document metrics saved to JSON: {json_output_path}")
 
     # Export human-friendly CSV files: summary and two top-letter tables
@@ -252,8 +289,11 @@ def make_evaluation_output_folder(folder_pred: str) -> str:
     return evaluation_folder
 
 
-def format_page_number_check_report(used: bool, messages: list[str]) -> list[str]:
-    """Format the result of check_page_number_alignment as report lines,
+def format_page_number_check_report(
+    used: bool, messages: list[str]
+) -> list[str]:
+    """
+    Format the result of check_page_number_alignment as report lines,
     for printing to the terminal and/or writing to the evaluation log.
     """
     if not used:

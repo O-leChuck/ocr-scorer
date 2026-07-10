@@ -127,6 +127,116 @@ class TestMainEndToEndFixtures(unittest.TestCase):
         finally:
             _cleanup(output_dir)
 
+    def test_ds5_all_empty_references_yields_infinite_document_wide_cer(self):
+        """
+        Test the fully degenerate case: every page has an empty
+        reference but the OCR still produced text (hallucination), so
+        the document-wide raw CER/WER must be reported as infinite
+        rather than the old, misleadingly finite fallback value.
+        """
+        gt_dir = os.path.join(TEST_DATA_DIR, "DS-5_empty-gt-files", "gt")
+        pred_dir = os.path.join(TEST_DATA_DIR, "DS-5_empty-gt-files", "pred")
+
+        _run_main_with_folders(gt_dir, pred_dir)
+
+        output_dir = self._latest_output_dir(pred_dir)
+        try:
+            with open(
+                os.path.join(output_dir, "metrics_document.json"),
+                encoding="utf-8",
+            ) as f:
+                doc = json.load(f)
+            self.assertEqual(doc["summary"]["cer_raw"], "Infinity")
+            self.assertEqual(doc["summary"]["wer_raw"], "Infinity")
+
+            with open(
+                os.path.join(output_dir, "metrics_pagewise.json"),
+                encoding="utf-8",
+            ) as f:
+                pages = json.load(f)
+            self.assertEqual(len(pages), 3)
+            for page in pages:
+                self.assertEqual(page["cer_raw"], "Infinity")
+                self.assertEqual(page["wer_raw"], "Infinity")
+
+            # the chart/PDF must still be generated, not crash
+            for filename in ("metrics_visualization.png", "evaluation_report.pdf"):
+                self.assertTrue(
+                    os.path.isfile(os.path.join(output_dir, filename))
+                )
+        finally:
+            _cleanup(output_dir)
+
+    def test_ds6_empty_predictions_are_unaffected_finite_100_percent(self):
+        """
+        Test that an empty *prediction* against a real reference is
+        unaffected by the empty-reference fix: this is a normal,
+        finite division (distance == reference length), not a
+        divide-by-zero, so it should remain a plain 100% CER/WER.
+        """
+        gt_dir = os.path.join(TEST_DATA_DIR, "DS-6_empty-pred-files", "gt")
+        pred_dir = os.path.join(TEST_DATA_DIR, "DS-6_empty-pred-files", "pred")
+
+        _run_main_with_folders(gt_dir, pred_dir)
+
+        output_dir = self._latest_output_dir(pred_dir)
+        try:
+            with open(
+                os.path.join(output_dir, "metrics_document.json"),
+                encoding="utf-8",
+            ) as f:
+                doc = json.load(f)
+            self.assertEqual(doc["summary"]["cer_raw"], 100.0)
+            self.assertEqual(doc["summary"]["wer_raw"], 100.0)
+        finally:
+            _cleanup(output_dir)
+
+
+class TestMainBothEmptyPage(unittest.TestCase):
+    """Regression test for the true 0/0 case (empty ref AND empty pred)."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_path = self.temp_dir.name
+        self.gt_dir = os.path.join(self.temp_path, "gt")
+        self.pred_dir = os.path.join(self.temp_path, "pred")
+        os.makedirs(self.gt_dir)
+        os.makedirs(self.pred_dir)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_both_empty_page_is_not_a_number_not_infinity_not_zero(self):
+        open(os.path.join(self.gt_dir, "p0001.txt"), "w", encoding="utf-8").close()
+        open(
+            os.path.join(self.pred_dir, "p0001.txt"), "w", encoding="utf-8"
+        ).close()
+
+        _run_main_with_folders(self.gt_dir, self.pred_dir)
+
+        output_dirs = [
+            os.path.join(self.temp_path, name)
+            for name in os.listdir(self.temp_path)
+            if name.startswith("evaluation_")
+        ]
+        self.assertEqual(len(output_dirs), 1)
+        output_dir = output_dirs[0]
+
+        with open(
+            os.path.join(output_dir, "metrics_pagewise.json"), encoding="utf-8"
+        ) as f:
+            pages = json.load(f)
+        self.assertEqual(len(pages), 1)
+        self.assertIsNone(pages[0]["cer_raw"])
+        self.assertIsNone(pages[0]["wer_raw"])
+
+        with open(
+            os.path.join(output_dir, "metrics_document.json"), encoding="utf-8"
+        ) as f:
+            doc = json.load(f)
+        self.assertIsNone(doc["summary"]["cer_raw"])
+        self.assertIsNone(doc["summary"]["wer_raw"])
+
 
 class TestMainEmptyFolders(unittest.TestCase):
     """Regression tests for the crash fixed when there is nothing to score."""

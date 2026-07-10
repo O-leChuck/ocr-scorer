@@ -5,47 +5,42 @@ focus on orchestration only.
 """
 
 import os
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+_METRIC_SPECS = [
+    ("cer_raw", "o", "CER raw", "#FF6B6B"),
+    ("wer_raw", "s", "WER raw", "#4ECDC4"),
+    ("cer_jiwer_normalized", "^", "CER jiwer normalized", "#FFE66D"),
+    ("wer_jiwer_normalized", "d", "WER jiwer normalized", "#95E1D3"),
+]
+
 
 def build_metrics_chart(df: pd.DataFrame) -> plt.Figure:
-    """Build a matplotlib figure for the CER/WER pagewise chart."""
+    """Build a matplotlib figure for the CER/WER pagewise chart.
+
+    A page whose value is +inf (an empty-reference page the OCR
+    hallucinated text onto - see README, "Empty-reference pages") can't
+    be drawn at its true height, so it's left as a gap in the line and
+    flagged with an explicit "undefined" marker at the top of the chart
+    instead of silently plotting off-scale and disappearing.
+    """
     fig, ax = plt.subplots(figsize=(14, 7))
 
-    ax.plot(
-        df.index,
-        df["cer_raw"],
-        marker="o",
-        linewidth=2,
-        label="CER raw",
-        color="#FF6B6B",
-    )
-    ax.plot(
-        df.index,
-        df["wer_raw"],
-        marker="s",
-        linewidth=2,
-        label="WER raw",
-        color="#4ECDC4",
-    )
-    ax.plot(
-        df.index,
-        df["cer_jiwer_normalized"],
-        marker="^",
-        linewidth=2,
-        label="CER jiwer normalized",
-        color="#FFE66D",
-    )
-    ax.plot(
-        df.index,
-        df["wer_jiwer_normalized"],
-        marker="d",
-        linewidth=2,
-        label="WER jiwer normalized",
-        color="#95E1D3",
-    )
+    undefined_positions = set()
+    for column, marker, label, color in _METRIC_SPECS:
+        undefined_positions.update(df.index[np.isposinf(df[column])])
+        values = df[column].replace([np.inf, -np.inf], np.nan)
+        ax.plot(
+            df.index,
+            values,
+            marker=marker,
+            linewidth=2,
+            label=label,
+            color=color,
+        )
 
     ax.set_xlabel("Page Number", fontsize=12, fontweight="bold")
     ax.set_ylabel("Error Rate (%)", fontsize=12, fontweight="bold")
@@ -54,9 +49,23 @@ def build_metrics_chart(df: pd.DataFrame) -> plt.Figure:
         fontsize=14,
         fontweight="bold",
     )
-    ax.legend(loc="best", fontsize=10)
     ax.grid(True, alpha=0.3)
     ax.set_xticks(range(len(df)))
+
+    if undefined_positions:
+        _, ylim_top = ax.get_ylim()
+        ax.scatter(
+            sorted(undefined_positions),
+            [ylim_top] * len(undefined_positions),
+            marker="^",
+            color="red",
+            s=120,
+            zorder=5,
+            clip_on=False,
+            label="undefined (empty reference)",
+        )
+
+    ax.legend(loc="best", fontsize=10)
 
     return fig
 

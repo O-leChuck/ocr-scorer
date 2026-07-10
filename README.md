@@ -126,11 +126,18 @@ most frequent offenders. Two caveats:
   truth character aren't attributed to anything, since there's no
   reference character to blame them on.
 
-## Known limitations
+### Empty-reference pages
 
-- Pages where the ground-truth text is completely empty currently produce
-  misleadingly large CER/WER values for that page (well above 100%) instead
-  of being excluded or flagged. This is a known issue and is being revisited.
+If a ground-truth page is empty but the OCR still produced text (a
+hallucination), that page's CER/WER can't be expressed as a normal
+percentage - the calculation is a genuine division by zero. Rather than
+disguise this with a made-up number, the script reports it explicitly as
+**undefined/infinite**, and shows it in the chart/PDF as a gap in the line
+with a red "undefined" marker at the top, instead of a fake percentage or
+a silent gap. This is deliberate: capping or hiding it would hide exactly
+the failure mode (hallucinating readable text onto blank pages) that
+CER/WER is meant to catch. See the footnote at the bottom of this
+document for exactly how this value is represented in each output file.
 
 ## Metric details
 
@@ -249,6 +256,44 @@ These are the same `cer_custom_transform`/`wer_custom_transform` objects already
 - The normalized regime applies lowercasing and punctuation handling (removed for CER, replaced with a space for WER) in addition to whitespace normalization.
 - If normalized and raw results are very similar, your OCR output likely has consistent formatting and the remaining errors are actual transcription differences.
 - Modify `metrics.py` if you want a different normalization pipeline.
+
+### Footnote: exactly how empty-reference values are represented
+
+- **Reference empty, prediction non-empty** (hallucination): a genuine
+  divide-by-zero. Mathematically, this is the limit of a positive number
+  divided by an ever-shrinking denominator, i.e. infinite - not "undefined"
+  in the sense of being arbitrary, just unbounded. It is deliberately not
+  capped or excluded.
+- **Reference and prediction both empty**: a true 0/0 - there is nothing
+  to measure on that page (no error, since nothing was predicted for
+  nothing expected). Reported as not-a-number/not-applicable rather than a
+  fabricated 0% or 100%.
+- **CSV** (`metrics_pagewise.csv`, `metrics_document_summary.csv`):
+  infinite values are written as the literal text `inf`; not-applicable
+  values are left blank. Both round-trip correctly as real numbers in
+  pandas/numpy/R. Excel does not recognize the text `inf` as numeric, so a
+  plain `=AVERAGE()` over such a column will silently skip that cell in
+  Excel specifically - though the word `inf` sitting in a numeric column
+  is still a strong visual flag for a human reader, even where Excel's own
+  formulas don't propagate it the way Python/R do.
+- **JSON** (`metrics_pagewise.json`, `metrics_document.json`): infinite
+  values are written as the string `"Infinity"`/`"-Infinity"` (JSON has no
+  native infinity token) rather than `null`, specifically so they can't be
+  mistaken for ordinary missing data - this does mean that field is no
+  longer purely numeric for that one page. Not-applicable (0/0) values are
+  written as `null`.
+- **Chart/PDF** (`metrics_visualization.png`, `evaluation_report.pdf`): an
+  infinite page shows as a break in the line, flagged with a red triangle
+  marker at the top of the chart, rather than distorting the whole
+  chart's scale or silently plotting off the visible area.
+- This all applies to the **raw** (whitespace) CER/WER, which is entirely
+  our own calculation. The **jiwer-normalized** CER/WER for an individual
+  page still goes through the third-party `jiwer` library's own internal
+  handling of empty-after-normalization text, which currently returns a
+  specific (if unintuitive) finite value rather than infinity - see
+  [Normalization Details](#normalization-details). The jiwer-normalized
+  *document-wide* aggregate, however, is our own summation and follows the
+  same infinity/not-applicable convention as the raw metrics.
 
 ## License
 

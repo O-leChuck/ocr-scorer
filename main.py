@@ -159,11 +159,16 @@ def main():
         lev_dist_raw_accumulated += lev_dist_raw_page
         chars_gt_accumulated += len(reference)
 
-        cer_raw_page = (
-            lev_dist_raw_page / len(reference)
-            if len(reference) > 0
-            else lev_dist_raw_page
-        ) * 100
+        if len(reference) > 0:
+            cer_raw_page = (lev_dist_raw_page / len(reference)) * 100
+        elif lev_dist_raw_page > 0:
+            # empty reference, but the OCR still produced text: a
+            # hallucination, mathematically an unbounded (x/0, x>0) rate
+            cer_raw_page = float("inf")
+        else:
+            # both reference and prediction are empty: a true 0/0, there
+            # is nothing to measure on this page
+            cer_raw_page = float("nan")
 
         lev_dist_raw_words_page, words_gt_file = calculate_lev_dist_words(
             reference, predicted
@@ -171,11 +176,12 @@ def main():
         lev_dist_raw_words_accumulated += lev_dist_raw_words_page
         words_gt_accumulated += words_gt_file
 
-        wer_raw_page = (
-            lev_dist_raw_words_page / words_gt_file
-            if words_gt_file > 0
-            else lev_dist_raw_words_page
-        ) * 100
+        if words_gt_file > 0:
+            wer_raw_page = (lev_dist_raw_words_page / words_gt_file) * 100
+        elif lev_dist_raw_words_page > 0:
+            wer_raw_page = float("inf")
+        else:
+            wer_raw_page = float("nan")
 
         cer_jiwer_page, wer_jiwer_page = calculate_jiwer_metrics(
             reference, predicted
@@ -214,46 +220,82 @@ def main():
         )
         return
 
-    # Normalize the document-wide raw CER scores by dividing by the
-    # total reference character count.
-    try:
-        lev_dist_raw_accumulated /= chars_gt_accumulated
-    except ZeroDivisionError:
-        print("Warning: No characters in GT! Cannot calculate raw CER.")
+    # Document-wide raw CER/WER: divide summed edits by summed reference
+    # length. In the fully degenerate case where every single page has an
+    # empty reference, fall back to the same infinity/NaN convention used
+    # per-page (see README, "Empty-reference pages").
+    if chars_gt_accumulated > 0:
+        cer_raw_percentage = (
+            lev_dist_raw_accumulated / chars_gt_accumulated
+        ) * 100
+    elif lev_dist_raw_accumulated > 0:
+        cer_raw_percentage = float("inf")
+        print(
+            "Warning: No characters in any GT file, but predictions "
+            "contain text - raw CER is undefined (infinite)."
+        )
+    else:
+        cer_raw_percentage = float("nan")
+        print(
+            "Warning: No characters in any GT or prediction file - raw "
+            "CER is not defined."
+        )
 
-    # Normalize the document-wide raw WER scores by dividing by the
-    # total reference word count.
-    try:
-        lev_dist_raw_words_accumulated /= words_gt_accumulated
-    except ZeroDivisionError:
-        print("Warning: No words in GT! Cannot calculate raw WER.")
+    if words_gt_accumulated > 0:
+        wer_raw_percentage = (
+            lev_dist_raw_words_accumulated / words_gt_accumulated
+        ) * 100
+    elif lev_dist_raw_words_accumulated > 0:
+        wer_raw_percentage = float("inf")
+        print(
+            "Warning: No words in any GT file, but predictions contain "
+            "words - raw WER is undefined (infinite)."
+        )
+    else:
+        wer_raw_percentage = float("nan")
+        print(
+            "Warning: No words in any GT or prediction file - raw WER is "
+            "not defined."
+        )
 
-    # Aggregate jiwer-normalized counts across pages instead of
-    # concatenate text.
-    try:
+    # Same convention for the jiwer-normalized aggregate, using our own
+    # summed edit/reference counts (calculate_jiwer_counts), not jiwer's
+    # own per-page cer()/wer() calls - see README for that distinction.
+    if jiwer_ref_chars_accumulated > 0:
         jiwer_cer_percentage = (
             jiwer_char_edits_accumulated / jiwer_ref_chars_accumulated
         ) * 100
-    except ZeroDivisionError:
-        jiwer_cer_percentage = 0.0
+    elif jiwer_char_edits_accumulated > 0:
+        jiwer_cer_percentage = float("inf")
         print(
-            "Warning: No normalized reference characters available for jiwer "
-            "CER."
+            "Warning: No normalized reference characters available, but "
+            "normalized predictions contain text - jiwer CER is "
+            "undefined (infinite)."
+        )
+    else:
+        jiwer_cer_percentage = float("nan")
+        print(
+            "Warning: No normalized reference or prediction characters "
+            "available - jiwer CER is not defined."
         )
 
-    try:
+    if jiwer_ref_words_accumulated > 0:
         jiwer_wer_percentage = (
             jiwer_word_edits_accumulated / jiwer_ref_words_accumulated
         ) * 100
-    except ZeroDivisionError:
-        jiwer_wer_percentage = 0.0
+    elif jiwer_word_edits_accumulated > 0:
+        jiwer_wer_percentage = float("inf")
         print(
-            "Warning: No normalized reference words available for jiwer WER."
+            "Warning: No normalized reference words available, but "
+            "normalized predictions contain words - jiwer WER is "
+            "undefined (infinite)."
         )
-
-    # calculate percentages
-    cer_raw_percentage = lev_dist_raw_accumulated * 100
-    wer_raw_percentage = lev_dist_raw_words_accumulated * 100
+    else:
+        jiwer_wer_percentage = float("nan")
+        print(
+            "Warning: No normalized reference or prediction words "
+            "available - jiwer WER is not defined."
+        )
 
     print(
         "Results in total:\n"
