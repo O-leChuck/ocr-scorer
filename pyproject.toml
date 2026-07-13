@@ -27,6 +27,7 @@ dependencies = [
     "Levenshtein>=0.27.3",
     "pandas>=2.0",
     "matplotlib>=3.10",
+    "numpy>=1.23",
 ]
 
 [project.urls]
