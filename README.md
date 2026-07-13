@@ -16,7 +16,7 @@ directly in any modern browser - no Python or command line needed.
 - [Usage](#usage)
   - [Interactive use](#interactive-use)
   - [Configuring default folders](#configuring-default-folders)
-  - [Important: how pages are matched](#important-how-pages-are-matched)
+  - [How pages are matched](#how-pages-are-matched)
   - [Non-interactive / scripted use](#non-interactive--scripted-use)
 - [Output](#output)
 - [Project layout](#project-layout)
@@ -66,15 +66,11 @@ results, and how to customize the normalization, see
 
 Run `python main.py` (or `ocr-scorer` if installed). When prompted, select
 **any one `.txt` file inside** your ground truth folder, then do the same
-for your predictions folder - the tool uses that file's parent folder.
-This is deliberate: the dialog is a regular file picker (not a plain
-folder picker), so you can see the folder's contents while browsing and
-immediately notice if you've navigated into the wrong or an empty folder.
+for your predictions folder - the tool opens all the .txt file from that 
+folder. 
 
 Both folders must contain the same number of `.txt` files - if the counts
-don't match, you'll get an error dialog and a chance to pick again. Both
-selected paths are also printed to the terminal as soon as you pick them,
-so you can double-check them right away.
+don't match, you'll get an error dialog and a chance to pick again. 
 
 ### Configuring default folders
 
@@ -84,19 +80,16 @@ order:
 1. A path you configure yourself in `config.ini` (see below) - the
    recommended option once you have a regular working folder.
 2. Your home directory, as a machine-agnostic, always-exists fallback
-   that works the same way on Windows/macOS/Linux and makes no assumption
-   about your folder structure.
+   that works the same way on Windows/macOS/Linux.
 
-Whichever one is used, it's printed to the terminal so it's never a
-silent guess. To set your own default: copy `config.template.ini` to
-`config.ini` (same folder) and fill in
+To set your own default: copy `config.template.ini` to
+`config.ini` (same folder) and fill in 
 `ground_truth_folder`/`prediction_folder` under `[paths]`. `config.ini`
 is in `.gitignore`, so your local paths are never committed. Either entry
-can be left blank; an invalid or nonexistent path is ignored (with a
-warning) rather than breaking the tool, falling through to the next
-option in the list above.
+can be left blank; an invalid or nonexistent path is ignored, falling back 
+to the home directory.
 
-### Important: how pages are matched
+### How pages are matched
 
 The tool pairs up ground-truth and prediction files by **sorted
 position**, not by filename - the first (alphabetically sorted) `.txt`
@@ -115,7 +108,7 @@ This means you must make sure that:
 
 If a page is missing from one folder while an unrelated extra file exists
 in the other, the file *counts* can still match while the actual page
-pairing is wrong - the tool has no way to detect this, so double-check
+pairing is wrong - the tool has no way to detect this, so please check
 your input folders before relying on the results.
 
 ### Non-interactive / scripted use
@@ -154,18 +147,15 @@ the path to that folder plus the document-wide summary dict, so a calling
 pipeline can act on the results without re-reading files from disk.
 
 Unlike the interactive flow, there's no dialog to retry folder selection
-if something's wrong, so `run_evaluation()` raises `ValueError` instead
-(rather than printing a message and silently doing nothing) if either
-folder doesn't exist, contains no `.txt` files, or the two folders contain
-different numbers of files. The CLI catches this and prints a plain error
-message when run from the command line.
+if something's wrong, so `run_evaluation()` raises a `ValueError` instead 
+if either folder doesn't exist, contains no `.txt` files, or the two folders 
+contain different numbers of files. The CLI catches this and prints a plain 
+error message when run from the command line.
 
 Anything noteworthy that happens during a run but doesn't stop it (a page
 that failed to read, a page whose CER/WER calculation itself failed and
-was skipped so the rest of the batch still completes, a page-number
-mismatch, a page whose CER/WER came out undefined - see
-[Output](#output)) is by default also printed to the terminal, which a
-pipeline could easily miss. Every such message is therefore also
+was skipped, a page-number mismatch, a page whose CER/WER came out undefined - 
+see [Output](#output)) - is by default printed to the terminal and also
 collected into `document_metrics["warnings"]`, so a caller can check for
 problems without watching stdout. Pass `verbose=False` to suppress the
 printing entirely (e.g. if your pipeline has its own logging) without
@@ -193,7 +183,7 @@ That folder contains:
 - `metrics_document_top_raw.csv` / `metrics_document_top_normalized.csv` -
   the characters most often misrecognized, raw and normalized (only
   written if there are any attributable errors)
-- `metrics_visualization.png` - a chart of CER/WER per page
+- `metrics_visualization.png` - a bar chart of CER/WER per page
 - `evaluation_report.pdf` - a one-file report combining the summary, the
   top-error tables, and the chart, suitable for sharing or archiving
 
@@ -206,10 +196,9 @@ any ground truth character aren't attributed to anything.
 
 **Empty-reference pages:** if a ground-truth page is empty but the OCR
 still produced text (a hallucination), that page's CER/WER is reported as
-explicitly **undefined/infinite** rather than a made-up percentage, and
-shown in the chart/PDF as a gap in the line with a red "undefined"
-marker. For exactly how this value is represented in each output file
-(CSV, JSON, chart), see
+explicitly **undefined/infinite**, and shown in the chart/PDF as a gap with 
+a red "undefined" marker. For exactly how this value is represented in each 
+output file (CSV, JSON, chart), see
 [docs/METRICS.md](docs/METRICS.md#empty-reference-pages-exact-representation).
 
 ## Project layout
@@ -226,14 +215,26 @@ marker. For exactly how this value is represented in each output file
 - `ocr_scorer/plotting.py` - chart and PDF report generation
 - `ocr_scorer/config.py` - loads optional default folder paths from `config.ini`
 - `config.template.ini` - template for `config.ini` (see [Configuring default folders](#configuring-default-folders))
+- `test_*.py` - the test suite (`python -m unittest discover -p "test_*.py"`)
+- `test-data/` - curated GT/prediction fixture pairs the tests run against
 - `docs/METRICS.md` - detailed metrics reference: normalization pipelines,
   worked examples, and exact empty-reference representation
-- `requirements.txt` - Python package requirements
+- `webapp/` - the standalone browser-based version (naive CER/WER only,
+  no install required - open `webapp/index.html` directly)
+- `pyproject.toml` - packaging metadata; enables `pip install -e .` and
+  the `ocr-scorer` command
+- `requirements.txt` - Python package requirements for running from source
+  without installing the package
+- `LICENSE` - MIT license text
 - `README.md` - this file
 
 ## Requirements
 
 - Python 3.10 or newer
+- Dependencies: `jiwer`, `Levenshtein`, `pandas`, `matplotlib`, `numpy` -
+  installed via `pip install -r requirements.txt` or automatically if you
+  `pip install -e .` (see [Quick start](#quick-start)); exact versions are
+  pinned in `requirements.txt` and `pyproject.toml`
 
 ## License
 
