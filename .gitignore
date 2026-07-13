@@ -4,3 +4,4 @@ __pycache__/
 *.ipynb
 *.egg-info/
 .claude
+config.ini

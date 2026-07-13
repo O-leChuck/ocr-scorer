@@ -13,6 +13,7 @@ The results are saved in CSV and JSON formats, and a visualization of
 import glob
 import os
 from datetime import date
+from config import load_default_paths
 from io_helpers import (
     check_page_number_alignment,
     find_folder,
@@ -35,26 +36,52 @@ FOLDER_NAME_GT = "Goldstandard"
 FOLDER_NAME_PRED = "Lumen-Lucernae"
 
 
+def _resolve_initial_directory(
+    configured_path, auto_detected_path, fallback_path, label
+):
+    """Pick the starting directory for a folder-selection dialog and
+    report which source was used, so a stale/unexpected default is
+    visible upfront rather than silently steering folder selection.
+
+    Priority: config.ini > auto-detected folder > built-in fallback.
+    """
+    if configured_path:
+        print(f"Using configured default for {label}: {configured_path}")
+        return configured_path
+    if auto_detected_path:
+        print(
+            f"Auto-detected default for {label}: {auto_detected_path} "
+            "(no config.ini entry set - see config.template.ini)"
+        )
+        return auto_detected_path
+    print(f"Using built-in fallback default for {label}: {fallback_path}")
+    return fallback_path
+
+
 def main():
     """
     Main function to execute the CER/WER calculation and create
     visualization.
     """
 
+    configured_gt, configured_pred = load_default_paths()
+
     # Try to locate likely GT and prediction folders automatically.
     # If not found, the user is prompted to select folders manually.
     target_folder_gt = find_folder(FOLDER_NAME_GT)
     target_folder_pred = find_folder(FOLDER_NAME_PRED)
 
-    initial_directory_gt = (
-        target_folder_gt
-        if target_folder_gt
-        else "/home/covid10/Nextcloud/Lumen-Lucernae/sources"
+    initial_directory_gt = _resolve_initial_directory(
+        configured_gt,
+        target_folder_gt,
+        "/home/covid10/Nextcloud/Lumen-Lucernae/sources",
+        "Goldstandard folder",
     )
-    initial_directory_pred = (
-        target_folder_pred
-        if target_folder_pred
-        else "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/"
+    initial_directory_pred = _resolve_initial_directory(
+        configured_pred,
+        target_folder_pred,
+        "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/",
+        "prediction folder",
     )
 
     title_gt_selection = "Select a folder with Goldstandard Evaluation Data"

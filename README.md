@@ -30,6 +30,8 @@ The script supports two evaluation regimes:
 - `io_helpers.py` - folder selection and metric export helper functions
 - `metrics.py` - CER/WER calculation and character-error analysis
 - `plotting.py` - chart and PDF report generation
+- `config.py` - loads optional default folder paths from `config.ini`
+- `config.template.ini` - template for `config.ini` (see [Configuring default folders](#configuring-default-folders))
 - `requirements.txt` - Python package requirements
 - `README.md` - usage and documentation
 
@@ -59,12 +61,39 @@ also gives you an `ocr-scorer` command you can run from anywhere.
 4. Select the Goldstandard (ground truth) folder and the prediction folder
    when prompted. Both folders must contain the same number of `.txt` files
    - if the counts don't match, you'll get an error dialog and a chance to
-   pick again.
+   pick again. Both selected paths are also printed to the terminal as soon
+   as you pick them, so you can double-check them right away.
 
-   Note: the folder picker starts from a couple of hardcoded default paths
-   (used for the project this tool was originally built for). If they don't
-   exist on your machine, the dialog simply opens at a fallback location -
-   just navigate to your own folders as usual.
+### Configuring default folders
+
+The folder picker needs a starting directory. By default it tries, in
+order:
+
+1. A path you configure yourself in `config.ini` (see below) - the
+   recommended option once you have a regular working folder.
+2. Automatically searching your home directory for folders named
+   `Goldstandard`/`Lumen-Lucernae` (this was built for the project this
+   tool originally shipped with, and can find the wrong folder if you have
+   more than one directory with that name on your system - see the
+   warning below).
+3. A hardcoded fallback path from that same original project, which almost
+   certainly doesn't exist on your machine.
+
+Whichever one is used, it's printed to the terminal so it's never a silent
+guess. To set your own default: copy `config.template.ini` to `config.ini`
+(same folder) and fill in `goldstandard_folder`/`prediction_folder` under
+`[paths]`. `config.ini` is in `.gitignore`, so your local paths are never
+committed. Either entry can be left blank; an invalid or nonexistent path
+is ignored (with a warning) rather than breaking the tool, falling through
+to the next option in the list above.
+
+**Heads up:** option 2 above searches your *entire* home directory for the
+first folder with a matching name, and stops at the first match - if you
+have more than one folder named `Goldstandard` anywhere under your home
+directory (for example, a stray copy nested inside an old prediction run's
+output folder), it can silently pick the wrong one as the dialog's starting
+point. Configuring `config.ini` avoids this ambiguity entirely, since it
+points at an exact folder rather than searching for a name.
 
 ### Important: how pages are matched
 
