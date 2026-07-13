@@ -119,6 +119,43 @@ the other, the file *counts* can still match while the actual page pairing
 is wrong - the tool has no way to detect this, so double-check your input
 folders before relying on the results.
 
+### Non-interactive / scripted use
+
+For running this as a step in another pipeline (rather than by hand), there
+are two options that skip the folder-picker dialogs entirely:
+
+**From the command line**, pass both folders as flags:
+
+```bash
+python main.py --gt /path/to/goldstandard --pred /path/to/predictions
+```
+
+`--gt` and `--pred` must be given together; providing only one is treated
+as a usage error rather than falling back to the interactive dialog for
+the other.
+
+**From another Python script**, import `run_evaluation()` directly instead
+of going through `main()`:
+
+```python
+from main import run_evaluation
+
+output_dir, document_metrics = run_evaluation(gt_path, pred_path)
+```
+
+`run_evaluation()` runs the same evaluation as the interactive tool -
+writing the same files to a dated `evaluation_YYYY-MM-DD` folder next to
+the prediction folder (see [Output](#output)) - and additionally returns
+the path to that folder plus the document-wide summary dict, so a calling
+pipeline can act on the results without re-reading files from disk.
+
+Unlike the interactive flow, there's no dialog to retry folder selection
+if something's wrong, so `run_evaluation()` raises `ValueError` instead
+(rather than printing a message and silently doing nothing) if either
+folder doesn't exist, contains no `.txt` files, or the two folders contain
+different numbers of files. `main()` catches this and prints a plain error
+message when run from the command line.
+
 ## Output
 
 Each run creates a new, dated subfolder next to the selected prediction

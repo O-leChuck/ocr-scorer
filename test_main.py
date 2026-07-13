@@ -35,7 +35,7 @@ def _run_main_with_folders(gt_dir, pred_dir):
     with patch(
         "main.validate_and_select_folders", return_value=(gt_dir, pred_dir)
     ):
-        main.main()
+        main.main([])
 
 
 class TestMainDefaultPathPriority(unittest.TestCase):
@@ -52,7 +52,7 @@ class TestMainDefaultPathPriority(unittest.TestCase):
                 "main.validate_and_select_folders", return_value=None
             ) as mock_validate,
         ):
-            main.main()
+            main.main([])
         args, _ = mock_validate.call_args
         return args[0], args[1]
 
@@ -234,6 +234,109 @@ class TestMainEndToEndFixtures(unittest.TestCase):
             self.assertEqual(doc["summary"]["wer_raw"], 100.0)
         finally:
             _cleanup(output_dir)
+
+
+class TestRunEvaluation(unittest.TestCase):
+    """Tests for run_evaluation(), the programmatic entry point used by
+    other scripts/pipelines (bypassing main()'s interactive dialogs)."""
+
+    def setUp(self):
+        """Skip if the curated test-data/ fixtures aren't present."""
+        if not os.path.isdir(TEST_DATA_DIR):
+            self.skipTest("test-data/ not present")
+
+    def test_returns_output_dir_and_document_metrics(self):
+        """Test the happy path returns a usable (output_dir, metrics)."""
+        gt_dir = os.path.join(TEST_DATA_DIR, "DS-2_regular-errors", "gt")
+        pred_dir = os.path.join(TEST_DATA_DIR, "DS-2_regular-errors", "pred")
+
+        output_dir, document_metrics = main.run_evaluation(gt_dir, pred_dir)
+
+        try:
+            self.assertTrue(os.path.isdir(output_dir))
+            self.assertEqual(document_metrics["summary"]["page_count"], 3)
+            self.assertAlmostEqual(
+                document_metrics["summary"]["cer_raw"], 2.0378, places=3
+            )
+        finally:
+            _cleanup(output_dir)
+
+    def test_nonexistent_gt_folder_raises_value_error(self):
+        """Test that a missing Goldstandard folder raises, not crashes
+        with an unhandled exception or silently does nothing."""
+        pred_dir = os.path.join(TEST_DATA_DIR, "DS-2_regular-errors", "pred")
+
+        with self.assertRaises(ValueError):
+            main.run_evaluation("/does/not/exist", pred_dir)
+
+    def test_nonexistent_pred_folder_raises_value_error(self):
+        """Test that a missing prediction folder raises."""
+        gt_dir = os.path.join(TEST_DATA_DIR, "DS-2_regular-errors", "gt")
+
+        with self.assertRaises(ValueError):
+            main.run_evaluation(gt_dir, "/does/not/exist")
+
+    def test_mismatched_file_counts_raise_value_error(self):
+        """Test that folders with different .txt counts raise, since
+        there is no interactive retry available to a direct caller."""
+        gt_dir = os.path.join(TEST_DATA_DIR, "DS-2_regular-errors", "gt")
+        pred_dir = os.path.join(TEST_DATA_DIR, "DS-4_edge-cases", "gt")
+
+        with self.assertRaises(ValueError):
+            main.run_evaluation(gt_dir, pred_dir)
+
+    def test_empty_folders_raise_value_error(self):
+        """Test that folders with no .txt files raise, rather than the
+        old print-and-return behavior (which a caller can't observe)."""
+        with (
+            tempfile.TemporaryDirectory() as empty_gt,
+            tempfile.TemporaryDirectory() as empty_pred,
+        ):
+            with self.assertRaises(ValueError):
+                main.run_evaluation(empty_gt, empty_pred)
+
+
+class TestMainCliArgs(unittest.TestCase):
+    """Tests for main()'s --gt/--pred CLI flags, for shell-level
+    pipeline use that bypasses the interactive folder dialogs."""
+
+    def test_both_flags_given_skip_dialogs_and_config(self):
+        """Test that --gt/--pred are used directly, without touching
+        config.ini or showing any folder-selection dialog."""
+        with (
+            patch("main.run_evaluation") as mock_run,
+            patch("main.load_default_paths") as mock_config,
+            patch("main.validate_and_select_folders") as mock_dialog,
+        ):
+            main.main(["--gt", "/some/gt", "--pred", "/some/pred"])
+
+        mock_run.assert_called_once_with("/some/gt", "/some/pred")
+        mock_config.assert_not_called()
+        mock_dialog.assert_not_called()
+
+    def test_only_one_flag_given_is_an_error(self):
+        """Test that providing only one of --gt/--pred doesn't silently
+        fall back to the interactive dialog with a half-set value."""
+        with (
+            patch("main.run_evaluation") as mock_run,
+            patch("main.validate_and_select_folders") as mock_dialog,
+        ):
+            main.main(["--gt", "/some/gt"])
+
+        mock_run.assert_not_called()
+        mock_dialog.assert_not_called()
+
+    def test_value_error_from_run_evaluation_is_reported_not_raised(self):
+        """Test that main() catches run_evaluation's ValueError and
+        reports it, rather than letting a human see a raw traceback."""
+        with patch(
+            "main.run_evaluation",
+            side_effect=ValueError("file count mismatch"),
+        ):
+            try:
+                main.main(["--gt", "/some/gt", "--pred", "/some/pred"])
+            except ValueError:
+                self.fail("main() should catch ValueError, not propagate it")
 
 
 class TestMainBothEmptyPage(unittest.TestCase):

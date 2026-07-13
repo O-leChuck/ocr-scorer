@@ -10,6 +10,7 @@ The results are saved in CSV and JSON formats, and a visualization of
  the per-page CER and WER is generated and saved as a PNG file.
 """
 
+import argparse
 import glob
 import os
 from datetime import date
@@ -46,58 +47,47 @@ def _resolve_initial_directory(configured_path, fallback_path, label):
     return fallback_path
 
 
-def main():
+def run_evaluation(folder_gt: str, folder_pred: str) -> tuple[str, dict]:
+    """Run the full CER/WER evaluation for the given GT/prediction
+    folders and return (output_dir, document_metrics).
+
+    This is the programmatic entry point for using ocr-scorer as a step
+    in another pipeline - import it directly rather than going through
+    main()'s interactive folder-selection dialogs:
+
+        from main import run_evaluation
+        output_dir, document_metrics = run_evaluation(gt_path, pred_path)
+
+    Unlike main() (which prints a message and exits for a human at a
+    terminal), this raises ValueError on any problem with the input,
+    since there is no interactive retry available to a caller.
+
+    Raises:
+        ValueError: if either folder doesn't exist, contains no .txt
+            files, the two folders contain different numbers of .txt
+            files, or every file failed to read.
     """
-    Main function to execute the CER/WER calculation and create
-    visualization.
-    """
-
-    configured_gt, configured_pred = load_default_paths()
-
-    initial_directory_gt = _resolve_initial_directory(
-        configured_gt,
-        "/home/covid10/Nextcloud/Lumen-Lucernae/sources",
-        "Goldstandard folder",
-    )
-    initial_directory_pred = _resolve_initial_directory(
-        configured_pred,
-        "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/",
-        "prediction folder",
-    )
-
-    title_gt_selection = (
-        "Select ANY ONE .txt file - the whole Goldstandard folder "
-        "will be used"
-    )
-    title_pred_selection = (
-        "Select ANY ONE .txt file - the whole predictions folder "
-        "will be used"
-    )
-
-    # Validate and select folders with retry logic if counts don't match
-    result = validate_and_select_folders(
-        initial_directory_gt,
-        initial_directory_pred,
-        title_gt_selection,
-        title_pred_selection,
-    )
-
-    if result is None:
-        print("Operation aborted by user.")
-        return
-
-    folder_gt, folder_pred = result
+    if not os.path.isdir(folder_gt):
+        raise ValueError(f"Goldstandard folder does not exist: {folder_gt}")
+    if not os.path.isdir(folder_pred):
+        raise ValueError(f"Prediction folder does not exist: {folder_pred}")
 
     # collect sorted page file lists so names align when zipped
     files_gt = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
     files_pred = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
 
-    if not files_gt:
-        print(
-            "No .txt files found in the selected folders. "
-            "Nothing to evaluate."
+    if not files_gt or not files_pred:
+        raise ValueError(
+            "No .txt files found in the Goldstandard and/or prediction "
+            "folder. Nothing to evaluate."
         )
-        return
+    if len(files_gt) != len(files_pred):
+        raise ValueError(
+            f"File count mismatch: Goldstandard folder has "
+            f"{len(files_gt)} .txt files, prediction folder has "
+            f"{len(files_pred)}. Both folders must contain the same "
+            "number of files (see README, 'how pages are matched')."
+        )
 
     # Best-effort sanity check: files are paired purely by sort position
     # (prediction filenames aren't guaranteed to resemble GT filenames),
@@ -228,11 +218,10 @@ def main():
         )
 
     if not page_metrics:
-        print(
+        raise ValueError(
             "No pages could be read (all files failed to open). "
             "Nothing to evaluate."
         )
-        return
 
     # Document-wide raw CER/WER: divide summed edits by summed reference
     # length. In the fully degenerate case where every single page has an
@@ -373,6 +362,78 @@ def main():
     )
     plot_metrics(df, output_dir)
     create_pdf_report(df, document_metrics, output_dir)
+
+    return output_dir, document_metrics
+
+
+def main(argv=None):
+    """CLI/interactive entry point.
+
+    Runs interactively (folder-picker dialogs) unless both --gt and
+    --pred are given, in which case those paths are used directly and
+    no dialog is shown - suitable for shell-level pipeline use. For use
+    from other Python code, prefer importing run_evaluation() directly
+    instead of going through this function at all.
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Compute CER/WER between OCR predictions and ground truth "
+            "text files."
+        )
+    )
+    parser.add_argument(
+        "--gt", help="Path to the Goldstandard (ground truth) folder"
+    )
+    parser.add_argument("--pred", help="Path to the prediction folder")
+    args = parser.parse_args(argv)
+
+    if bool(args.gt) != bool(args.pred):
+        print("Error: --gt and --pred must both be given together.")
+        return
+
+    if args.gt and args.pred:
+        folder_gt, folder_pred = args.gt, args.pred
+    else:
+        configured_gt, configured_pred = load_default_paths()
+
+        initial_directory_gt = _resolve_initial_directory(
+            configured_gt,
+            "/home/covid10/Nextcloud/Lumen-Lucernae/sources",
+            "Goldstandard folder",
+        )
+        initial_directory_pred = _resolve_initial_directory(
+            configured_pred,
+            "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/",
+            "prediction folder",
+        )
+
+        title_gt_selection = (
+            "Select ANY ONE .txt file - the whole Goldstandard folder "
+            "will be used"
+        )
+        title_pred_selection = (
+            "Select ANY ONE .txt file - the whole predictions folder "
+            "will be used"
+        )
+
+        # Validate and select folders with retry logic if counts don't match
+        result = validate_and_select_folders(
+            initial_directory_gt,
+            initial_directory_pred,
+            title_gt_selection,
+            title_pred_selection,
+        )
+
+        if result is None:
+            print("Operation aborted by user.")
+            return
+
+        folder_gt, folder_pred = result
+
+    try:
+        run_evaluation(folder_gt, folder_pred)
+    except ValueError as e:
+        print(f"Error: {e}")
 
 
 if __name__ == "__main__":
