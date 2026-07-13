@@ -53,8 +53,9 @@ def run_evaluation(
 
     Anything noteworthy that happens during a run but doesn't stop it
     (a page that failed to read, a page-number mismatch, a page whose
-    CER/WER came out undefined - see README, "Empty-reference pages")
-    is only ever printed by default, which a calling pipeline could
+    CER/WER came out undefined - see docs/METRICS.md, "Empty-reference
+    pages: exact representation") is only ever printed by default,
+    which a calling pipeline could
     easily miss if it isn't watching stdout. Every such message is
     therefore also collected into document_metrics["warnings"], so it
     can't be missed by inspecting the return value alone. Set
@@ -260,7 +261,8 @@ def run_evaluation(
     # Document-wide raw CER/WER: divide summed edits by summed reference
     # length. In the fully degenerate case where every single page has an
     # empty reference, fall back to the same infinity/NaN convention used
-    # per-page (see README, "Empty-reference pages").
+    # per-page (see docs/METRICS.md, "Empty-reference pages: exact
+    # representation").
     if chars_gt_accumulated > 0:
         cer_raw_percentage = (
             lev_dist_raw_accumulated / chars_gt_accumulated

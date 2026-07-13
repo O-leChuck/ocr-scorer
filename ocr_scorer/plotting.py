@@ -32,8 +32,9 @@ def build_metrics_chart(df: pd.DataFrame) -> plt.Figure:
     """Build a matplotlib figure for the CER/WER pagewise chart.
 
     A page whose value is +inf (an empty-reference page the OCR
-    hallucinated text onto - see README, "Empty-reference pages") can't
-    be drawn at its true height, so it's left as a gap in the line and
+    hallucinated text onto - see docs/METRICS.md, "Empty-reference
+    pages: exact representation") can't be drawn at its true height,
+    so it's left as a gap in the line and
     flagged with an explicit "undefined" marker at the top of the chart
     instead of silently plotting off-scale and disappearing.
     """
