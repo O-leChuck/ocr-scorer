@@ -2,9 +2,8 @@
 End-to-end tests for main.py.
 
 These drive the full pipeline (folder validation is mocked to avoid
-tkinter dialogs; find_folder's directory walk is mocked to keep tests
-fast and independent of the host filesystem) and check both the happy
-path and the two crash scenarios that were fixed:
+tkinter dialogs) and check both the happy path and the two crash
+scenarios that were fixed:
   - both folders contain zero .txt files
   - every file that is found fails to open
 
@@ -33,26 +32,22 @@ TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test-data")
 
 
 def _run_main_with_folders(gt_dir, pred_dir):
-    with (
-        patch("main.find_folder", return_value=None),
-        patch(
-            "main.validate_and_select_folders", return_value=(gt_dir, pred_dir)
-        ),
+    with patch(
+        "main.validate_and_select_folders", return_value=(gt_dir, pred_dir)
     ):
         main.main()
 
 
 class TestMainDefaultPathPriority(unittest.TestCase):
-    """Tests for main.py's config.ini > auto-detect > fallback priority
-    for the folder-dialog starting directory."""
+    """Tests for main.py's config.ini > fallback priority for the
+    folder-dialog starting directory."""
 
-    def _resolve(self, configured, auto_detected):
-        """Run main() with the given configured/auto-detected paths and
-        return the (initial_directory_gt, initial_directory_pred) that
-        were actually passed to validate_and_select_folders."""
+    def _resolve(self, configured):
+        """Run main() with the given configured paths and return the
+        (initial_directory_gt, initial_directory_pred) that were
+        actually passed to validate_and_select_folders."""
         with (
             patch("main.load_default_paths", return_value=configured),
-            patch("main.find_folder", side_effect=auto_detected),
             patch(
                 "main.validate_and_select_folders", return_value=None
             ) as mock_validate,
@@ -62,29 +57,15 @@ class TestMainDefaultPathPriority(unittest.TestCase):
         return args[0], args[1]
 
     def test_configured_paths_take_priority(self):
-        """Test that config.ini paths win over auto-detected ones."""
-        gt, pred = self._resolve(
-            configured=("/configured/gt", "/configured/pred"),
-            auto_detected=["/auto/gt", "/auto/pred"],
-        )
+        """Test that config.ini paths win over the built-in fallback."""
+        gt, pred = self._resolve(("/configured/gt", "/configured/pred"))
         self.assertEqual(gt, "/configured/gt")
         self.assertEqual(pred, "/configured/pred")
 
-    def test_auto_detected_used_when_not_configured(self):
-        """Test that find_folder's result is used when config.ini is
+    def test_builtin_fallback_used_when_not_configured(self):
+        """Test that the hardcoded default is used when config.ini is
         absent or has no value for that path."""
-        gt, pred = self._resolve(
-            configured=(None, None),
-            auto_detected=["/auto/gt", "/auto/pred"],
-        )
-        self.assertEqual(gt, "/auto/gt")
-        self.assertEqual(pred, "/auto/pred")
-
-    def test_builtin_fallback_used_when_nothing_else_available(self):
-        """Test that the hardcoded default is the last resort."""
-        gt, pred = self._resolve(
-            configured=(None, None), auto_detected=[None, None]
-        )
+        gt, pred = self._resolve((None, None))
         self.assertEqual(
             gt, "/home/covid10/Nextcloud/Lumen-Lucernae/sources"
         )
@@ -95,12 +76,11 @@ class TestMainDefaultPathPriority(unittest.TestCase):
     def test_mixed_sources_are_resolved_independently(self):
         """Test that GT and prediction paths fall through the priority
         chain independently of one another."""
-        gt, pred = self._resolve(
-            configured=("/configured/gt", None),
-            auto_detected=[None, "/auto/pred"],
-        )
+        gt, pred = self._resolve(("/configured/gt", None))
         self.assertEqual(gt, "/configured/gt")
-        self.assertEqual(pred, "/auto/pred")
+        self.assertEqual(
+            pred, "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/"
+        )
 
 
 class TestMainEndToEndFixtures(unittest.TestCase):

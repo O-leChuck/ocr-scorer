@@ -77,13 +77,8 @@ order:
 
 1. A path you configure yourself in `config.ini` (see below) - the
    recommended option once you have a regular working folder.
-2. Automatically searching your home directory for folders named
-   `Goldstandard`/`Lumen-Lucernae` (this was built for the project this
-   tool originally shipped with, and can find the wrong folder if you have
-   more than one directory with that name on your system - see the
-   warning below).
-3. A hardcoded fallback path from that same original project, which almost
-   certainly doesn't exist on your machine.
+2. A hardcoded fallback path from the project this tool originally
+   shipped with, which almost certainly doesn't exist on your machine.
 
 Whichever one is used, it's printed to the terminal so it's never a silent
 guess. To set your own default: copy `config.template.ini` to `config.ini`
@@ -93,13 +88,15 @@ committed. Either entry can be left blank; an invalid or nonexistent path
 is ignored (with a warning) rather than breaking the tool, falling through
 to the next option in the list above.
 
-**Heads up:** option 2 above searches your *entire* home directory for the
-first folder with a matching name, and stops at the first match - if you
-have more than one folder named `Goldstandard` anywhere under your home
-directory (for example, a stray copy nested inside an old prediction run's
-output folder), it can silently pick the wrong one as the dialog's starting
-point. Configuring `config.ini` avoids this ambiguity entirely, since it
-points at an exact folder rather than searching for a name.
+An earlier version of this tool also tried to auto-detect these folders by
+searching your entire home directory for folders named
+`Goldstandard`/`Lumen-Lucernae`. That was removed: it silently picked
+whichever matching folder it found first, which could be the wrong one if
+more than one folder shared that name anywhere under your home directory
+(for example, a stray copy nested inside an old prediction run's output
+folder) - with no way to guarantee that couldn't happen. `config.ini`
+avoids this ambiguity entirely, since it points at an exact folder rather
+than searching for a name.
 
 ### Important: how pages are matched
 

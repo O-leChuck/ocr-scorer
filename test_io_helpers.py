@@ -17,7 +17,6 @@ from io_helpers import (
     _make_json_safe,
     check_page_number_alignment,
     extract_page_number,
-    find_folder,
     format_page_number_check_report,
     make_evaluation_output_folder,
     save_document_metrics,
@@ -282,40 +281,6 @@ class TestSelectFolder(unittest.TestCase):
         result = select_folder("/initial", "Select a folder")
 
         self.assertEqual(result, "")
-
-
-class TestFindFolder(unittest.TestCase):
-    """Unit tests for locating a named folder under a search root."""
-
-    def setUp(self):
-        """Create a temporary directory tree to search within."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.temp_path = self.temp_dir.name
-
-    def tearDown(self):
-        """Clean up the temporary directory tree."""
-        self.temp_dir.cleanup()
-
-    def test_finds_folder_in_nested_directory(self):
-        """
-        Test that find_folder locates a folder nested under the start path.
-        """
-        target = os.path.join(self.temp_path, "a", "b", "Goldstandard")
-        os.makedirs(target)
-
-        found = find_folder("Goldstandard", start_path=self.temp_path)
-
-        self.assertEqual(found, target)
-
-    def test_returns_none_when_not_found(self):
-        """
-        Test that find_folder returns None when the folder does not exist.
-        """
-        os.makedirs(os.path.join(self.temp_path, "unrelated"))
-
-        found = find_folder("Goldstandard", start_path=self.temp_path)
-
-        self.assertIsNone(found)
 
 
 class TestSaveMetrics(unittest.TestCase):

@@ -128,18 +128,6 @@ def validate_and_select_folders(
             initial_dir_pred = folder_pred
 
 
-def find_folder(target_name, start_path="/home/"):
-    """
-    Search for a folder with the specified name starting from the given
-    path.
-    """
-
-    for root, dirs, _ in os.walk(start_path):
-        if target_name in dirs:
-            return os.path.join(root, target_name)
-    return None
-
-
 def extract_page_number(filename: str) -> int | None:
     """Best-effort extraction of a page number from a filename.
 
