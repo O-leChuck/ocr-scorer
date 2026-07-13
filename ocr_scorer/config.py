@@ -11,9 +11,11 @@ import configparser
 import os
 
 CONFIG_FILENAME = "config.ini"
-_CONFIG_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), CONFIG_FILENAME
-)
+# config.ini lives at the project root (alongside config.template.ini),
+# not inside the ocr_scorer/ package - so this must go up one level from
+# this file's own directory, not just os.path.dirname(__file__).
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CONFIG_PATH = os.path.join(_PROJECT_ROOT, CONFIG_FILENAME)
 
 
 def load_default_paths() -> tuple[str | None, str | None]:

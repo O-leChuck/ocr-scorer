@@ -20,6 +20,43 @@ def _write_config(path, contents):
         f.write(contents)
 
 
+class TestConfigPathLocation(unittest.TestCase):
+    """Regression test for a real bug: _CONFIG_PATH used to be computed
+    as os.path.dirname(config.py's own file), which was correct when
+    config.py lived at the project root, but silently broke when it
+    moved into the ocr_scorer/ package (one directory deeper) - it then
+    pointed at the nonexistent ocr_scorer/config.ini instead of the
+    real project-root config.ini, so a user's configured paths were
+    silently ignored with no error at all."""
+
+    def test_config_path_is_at_project_root_not_inside_the_package(self):
+        """Test that _CONFIG_PATH's directory is the parent of the
+        ocr_scorer package directory, not the package directory itself."""
+        package_dir = os.path.dirname(os.path.abspath(config.__file__))
+        project_root = os.path.dirname(package_dir)
+
+        self.assertEqual(os.path.dirname(config._CONFIG_PATH), project_root)
+        self.assertNotEqual(
+            os.path.dirname(config._CONFIG_PATH), package_dir
+        )
+
+    def test_config_path_is_next_to_the_tracked_template_file(self):
+        """Test against a real, known anchor: config.template.ini is
+        tracked in git at the project root, so _CONFIG_PATH's directory
+        must contain it. This would have caught the original bug
+        directly, since the buggy path pointed at a directory that
+        doesn't contain config.template.ini at all."""
+        template_path = os.path.join(
+            os.path.dirname(config._CONFIG_PATH), "config.template.ini"
+        )
+        self.assertTrue(
+            os.path.isfile(template_path),
+            f"config.template.ini not found next to _CONFIG_PATH "
+            f"({template_path}) - _CONFIG_PATH may be pointing at the "
+            "wrong directory",
+        )
+
+
 class TestLoadDefaultPaths(unittest.TestCase):
     """Unit tests for config.load_default_paths()."""
 
