@@ -221,7 +221,10 @@ class TestMainEndToEndFixtures(unittest.TestCase):
                 self.assertEqual(page["wer_raw"], "Infinity")
 
             # the chart/PDF must still be generated, not crash
-            for filename in ("metrics_visualization.png", "evaluation_report.pdf"):
+            for filename in (
+                "metrics_visualization.png",
+                "evaluation_report.pdf",
+            ):
                 self.assertTrue(
                     os.path.isfile(os.path.join(output_dir, filename))
                 )
@@ -268,7 +271,9 @@ class TestMainBothEmptyPage(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_both_empty_page_is_not_a_number_not_infinity_not_zero(self):
-        open(os.path.join(self.gt_dir, "p0001.txt"), "w", encoding="utf-8").close()
+        open(
+            os.path.join(self.gt_dir, "p0001.txt"), "w", encoding="utf-8"
+        ).close()
         open(
             os.path.join(self.pred_dir, "p0001.txt"), "w", encoding="utf-8"
         ).close()

@@ -84,8 +84,14 @@ def main():
         "prediction folder",
     )
 
-    title_gt_selection = "Select a folder with Goldstandard Evaluation Data"
-    title_pred_selection = "Select a folder with Predictions to evaluate"
+    title_gt_selection = (
+        "Select ANY ONE .txt file - the whole Goldstandard folder "
+        "will be used"
+    )
+    title_pred_selection = (
+        "Select ANY ONE .txt file - the whole predictions folder "
+        "will be used"
+    )
 
     # Validate and select folders with retry logic if counts don't match
     result = validate_and_select_folders(

@@ -58,11 +58,17 @@ python main.py
 Alternatively, you can install the tool itself (`pip install -e .`), which
 also gives you an `ocr-scorer` command you can run from anywhere.
 
-4. Select the Goldstandard (ground truth) folder and the prediction folder
-   when prompted. Both folders must contain the same number of `.txt` files
-   - if the counts don't match, you'll get an error dialog and a chance to
-   pick again. Both selected paths are also printed to the terminal as soon
-   as you pick them, so you can double-check them right away.
+4. When prompted, select **any one `.txt` file inside** your Goldstandard
+   (ground truth) folder, then do the same for your predictions folder -
+   the tool uses that file's parent folder. This is deliberate: the dialog
+   is a regular file picker (not a plain folder picker), so you can see the
+   folder's contents while browsing and immediately notice if you've
+   navigated into the wrong or an empty folder.
+
+   Both folders must contain the same number of `.txt` files - if the
+   counts don't match, you'll get an error dialog and a chance to pick
+   again. Both selected paths are also printed to the terminal as soon as
+   you pick them, so you can double-check them right away.
 
 ### Configuring default folders
 

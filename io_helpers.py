@@ -13,7 +13,7 @@ import glob
 from datetime import date
 from typing import Any
 from tkinter import Tk
-from tkinter.filedialog import askdirectory
+from tkinter.filedialog import askopenfilename
 from tkinter.messagebox import showerror
 import pandas as pd
 
@@ -24,19 +24,43 @@ _PAGE_MARKER_PATTERN = re.compile(r"(?:page|p)(\d+)", re.IGNORECASE)
 
 
 def select_folder(initialdirectory, title):
-    """Open a dialog to select a folder and return the selected path."""
+    """Open a dialog to select a folder and return the selected path.
+
+    This asks the user to pick any one file *inside* the target folder,
+    rather than the folder itself, and returns that file's parent
+    directory. tkinter's directory-only picker (askdirectory) hides
+    files by design on every platform, since its purpose is choosing a
+    container rather than a file - which made it easy to end up in the
+    wrong folder (e.g. an unrelated same-named folder elsewhere) without
+    ever seeing that it didn't contain the expected files. A file picker
+    shows the folder's contents while browsing, so a wrong/empty folder
+    is visible immediately instead of surfacing later as a confusing
+    file-count mismatch.
+
+    The dialog is restricted to .txt files only (no "all files" escape
+    hatch), since that's the only format this tool processes - letting
+    someone pick a different file type would defeat the point above, by
+    allowing a folder with no usable files to be "selected" anyway. A
+    folder with no .txt files will simply appear empty in the dialog.
+    """
+
+    print(
+        f"{title} - only .txt files are shown, since this tool only "
+        "processes plain-text .txt files."
+    )
 
     # we don't want a full GUI, so keep the root window from appearing
     root = Tk()
     root.withdraw()
     try:
-        # show an "Open" dialog box and return the path to the selected folder
-        folder_selected = askdirectory(
-            initialdir=initialdirectory, title=title
+        file_selected = askopenfilename(
+            initialdir=initialdirectory,
+            title=title,
+            filetypes=[("Text files", "*.txt")],
         )
     finally:
         root.destroy()
-    return folder_selected
+    return os.path.dirname(file_selected) if file_selected else ""
 
 
 def validate_and_select_folders(
@@ -141,7 +165,8 @@ def extract_page_number(filename: str) -> int | None:
 def check_page_number_alignment(
     files_gt: list[str], files_pred: list[str]
 ) -> tuple[bool, list[str]]:
-    """Best-effort sanity check for the sort-order file pairing used by main.py.
+    """Best-effort sanity check for the sort-order file pairing used by
+    main.py.
 
     Files are otherwise paired purely by their position in each sorted
     list, since prediction filenames are not guaranteed to resemble GT

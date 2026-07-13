@@ -232,10 +232,10 @@ class TestValidateAndSelectFolders(unittest.TestCase):
 class TestSelectFolder(unittest.TestCase):
     """Unit tests for select_folder's Tk lifecycle management."""
 
-    @patch("io_helpers.askdirectory")
+    @patch("io_helpers.askopenfilename")
     @patch("io_helpers.Tk")
     def test_tk_root_is_withdrawn_and_destroyed(
-        self, mock_tk_cls, mock_askdirectory
+        self, mock_tk_cls, mock_askopenfilename
     ):
         """
         Test that the Tk root window is withdrawn and destroyed properly.
@@ -243,7 +243,7 @@ class TestSelectFolder(unittest.TestCase):
 
         mock_root = MagicMock()
         mock_tk_cls.return_value = mock_root
-        mock_askdirectory.return_value = "/some/folder"
+        mock_askopenfilename.return_value = "/some/folder/file.txt"
 
         result = select_folder("/initial", "Select a folder")
 
@@ -251,23 +251,37 @@ class TestSelectFolder(unittest.TestCase):
         mock_root.withdraw.assert_called_once()
         mock_root.destroy.assert_called_once()
 
-    @patch("io_helpers.askdirectory")
+    @patch("io_helpers.askopenfilename")
     @patch("io_helpers.Tk")
     def test_tk_root_is_destroyed_even_if_dialog_raises(
-        self, mock_tk_cls, mock_askdirectory
+        self, mock_tk_cls, mock_askopenfilename
     ):
         """
-        Test that the Tk root window is destroyed even if askdirectory raises
-        an exception.
+        Test that the Tk root window is destroyed even if askopenfilename
+        raises an exception.
         """
         mock_root = MagicMock()
         mock_tk_cls.return_value = mock_root
-        mock_askdirectory.side_effect = RuntimeError("dialog failed")
+        mock_askopenfilename.side_effect = RuntimeError("dialog failed")
 
         with self.assertRaises(RuntimeError):
             select_folder("/initial", "Select a folder")
 
         mock_root.destroy.assert_called_once()
+
+    @patch("io_helpers.askopenfilename")
+    @patch("io_helpers.Tk")
+    def test_cancel_returns_empty_string(
+        self, mock_tk_cls, mock_askopenfilename
+    ):
+        """Test that cancelling the dialog (empty file path) returns "",
+        not a nonsensical dirname of an empty string."""
+        mock_tk_cls.return_value = MagicMock()
+        mock_askopenfilename.return_value = ""
+
+        result = select_folder("/initial", "Select a folder")
+
+        self.assertEqual(result, "")
 
 
 class TestFindFolder(unittest.TestCase):
