@@ -169,10 +169,12 @@ different numbers of files. The CLI catches this and prints a plain error
 message when run from the command line.
 
 Anything noteworthy that happens during a run but doesn't stop it (a page
-that failed to read, a page-number mismatch, a page whose CER/WER came out
-undefined - see [Empty-reference pages](#empty-reference-pages)) is by
-default also printed to the terminal, which a pipeline could easily miss.
-Every such message is therefore also collected into
+that failed to read, a page whose CER/WER calculation itself failed and
+was skipped so the rest of the batch still completes, a page-number
+mismatch, a page whose CER/WER came out undefined - see
+[Empty-reference pages](#empty-reference-pages)) is by default also
+printed to the terminal, which a pipeline could easily miss. Every such
+message is therefore also collected into
 `document_metrics["warnings"]`, so a caller can check for problems without
 watching stdout. Pass `verbose=False` to suppress the printing entirely
 (e.g. if your pipeline has its own logging) without losing anything - the

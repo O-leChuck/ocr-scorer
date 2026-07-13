@@ -170,50 +170,68 @@ def run_evaluation(
             warnings.append(message)
             continue
 
+        # Compute this page's metrics into locals first, and only commit
+        # them to the running totals/page_metrics below if every
+        # calculation succeeds - otherwise a failure partway through
+        # (e.g. a third-party library choking on some pathological page)
+        # would leave the accumulators inconsistent with page_metrics
+        # (counted into some totals but not others, or not in
+        # page_metrics at all). One bad page is skipped with a warning
+        # rather than losing every already-processed page in the batch.
+        try:
+            # calculate raw CER/WER on the unnormalized page text
+            lev_dist_raw_page = calculate_lev_dist_text(reference, predicted)
+
+            if len(reference) > 0:
+                cer_raw_page = (lev_dist_raw_page / len(reference)) * 100
+            elif lev_dist_raw_page > 0:
+                # empty reference, but the OCR still produced text: a
+                # hallucination, mathematically an unbounded (x/0, x>0)
+                # rate
+                cer_raw_page = float("inf")
+            else:
+                # both reference and prediction are empty: a true 0/0,
+                # there is nothing to measure on this page
+                cer_raw_page = float("nan")
+
+            lev_dist_raw_words_page, words_gt_file = calculate_lev_dist_words(
+                reference, predicted
+            )
+
+            if words_gt_file > 0:
+                wer_raw_page = (lev_dist_raw_words_page / words_gt_file) * 100
+            elif lev_dist_raw_words_page > 0:
+                wer_raw_page = float("inf")
+            else:
+                wer_raw_page = float("nan")
+
+            cer_jiwer_page, wer_jiwer_page = calculate_jiwer_metrics(
+                reference, predicted
+            )
+            # Count normalized edits and normalized reference lengths
+            # per page. These totals are summed across pages for the
+            # final aggregate.
+            (
+                jiwer_char_edits_page,
+                jiwer_ref_chars_page,
+                jiwer_word_edits_page,
+                jiwer_ref_words_page,
+            ) = calculate_jiwer_counts(reference, predicted)
+        except Exception as exc:  # noqa: BLE001 - deliberately broad
+            message = (
+                f"Skipping page - CER/WER calculation failed for "
+                f"'{file_gt}' / '{file_pred}': {exc!r}"
+            )
+            log(message)
+            warnings.append(message)
+            continue
+
         references.append(reference)
         predictions.append(predicted)
-
-        # calculate raw CER/WER on the unnormalized page text
-        # Raw values remain page-specific for plotting and document totals.
-        lev_dist_raw_page = calculate_lev_dist_text(reference, predicted)
         lev_dist_raw_accumulated += lev_dist_raw_page
         chars_gt_accumulated += len(reference)
-
-        if len(reference) > 0:
-            cer_raw_page = (lev_dist_raw_page / len(reference)) * 100
-        elif lev_dist_raw_page > 0:
-            # empty reference, but the OCR still produced text: a
-            # hallucination, mathematically an unbounded (x/0, x>0) rate
-            cer_raw_page = float("inf")
-        else:
-            # both reference and prediction are empty: a true 0/0, there
-            # is nothing to measure on this page
-            cer_raw_page = float("nan")
-
-        lev_dist_raw_words_page, words_gt_file = calculate_lev_dist_words(
-            reference, predicted
-        )
         lev_dist_raw_words_accumulated += lev_dist_raw_words_page
         words_gt_accumulated += words_gt_file
-
-        if words_gt_file > 0:
-            wer_raw_page = (lev_dist_raw_words_page / words_gt_file) * 100
-        elif lev_dist_raw_words_page > 0:
-            wer_raw_page = float("inf")
-        else:
-            wer_raw_page = float("nan")
-
-        cer_jiwer_page, wer_jiwer_page = calculate_jiwer_metrics(
-            reference, predicted
-        )
-        # Count normalized edits and normalized reference lengths per page.
-        # These totals are summed across pages for the final aggregate.
-        (
-            jiwer_char_edits_page,
-            jiwer_ref_chars_page,
-            jiwer_word_edits_page,
-            jiwer_ref_words_page,
-        ) = calculate_jiwer_counts(reference, predicted)
         jiwer_char_edits_accumulated += jiwer_char_edits_page
         jiwer_ref_chars_accumulated += jiwer_ref_chars_page
         jiwer_word_edits_accumulated += jiwer_word_edits_page

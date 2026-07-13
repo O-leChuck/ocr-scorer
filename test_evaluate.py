@@ -19,8 +19,12 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ocr_scorer.evaluate import run_evaluation
+from ocr_scorer.metrics import (
+    calculate_jiwer_metrics as _real_calculate_jiwer_metrics,
+)
 
 TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test-data")
 
@@ -409,6 +413,82 @@ class TestPageNumberCheck(unittest.TestCase):
             self.assertIn("was skipped", stdout_text)
             self.assertIn("was skipped", log_text)
             self.assertEqual(document_metrics["warnings"], [])
+        finally:
+            _cleanup(output_dir)
+
+
+class TestPerPageCalculationResilience(unittest.TestCase):
+    """Tests that a calculation failure on one page (as opposed to a
+    file-read error, which was already handled) is skipped with a
+    warning rather than crashing the whole run and losing every
+    already-processed page."""
+
+    def setUp(self):
+        """Create three GT/prediction page pairs, one of which will be
+        made to fail calculation via a mocked metrics function."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_path = self.temp_dir.name
+        self.gt_dir = os.path.join(self.temp_path, "gt")
+        self.pred_dir = os.path.join(self.temp_path, "pred")
+        os.makedirs(self.gt_dir)
+        os.makedirs(self.pred_dir)
+
+        for name, text in (
+            ("p0001.txt", "hello world"),
+            ("p0002.txt", "BOOM trigger page"),
+            ("p0003.txt", "goodbye world"),
+        ):
+            with open(
+                os.path.join(self.gt_dir, name), "w", encoding="utf-8"
+            ) as f:
+                f.write(text)
+            with open(
+                os.path.join(self.pred_dir, name), "w", encoding="utf-8"
+            ) as f:
+                f.write(text)
+
+    def tearDown(self):
+        """Clean up the temporary directories."""
+        self.temp_dir.cleanup()
+
+    @staticmethod
+    def _flaky_calculate_jiwer_metrics(reference, predicted):
+        """Behaves exactly like the real function, except it raises for
+        the one page deliberately marked to fail."""
+        if "BOOM" in reference:
+            raise RuntimeError("simulated calculation failure")
+        return _real_calculate_jiwer_metrics(reference, predicted)
+
+    def test_bad_page_is_skipped_with_warning_others_still_complete(self):
+        """Test that the bad page is skipped (page_count == 2, not 3),
+        the other two pages are still fully evaluated, and a warning
+        naming the failure is recorded rather than the run crashing."""
+        with patch(
+            "ocr_scorer.evaluate.calculate_jiwer_metrics",
+            side_effect=self._flaky_calculate_jiwer_metrics,
+        ):
+            output_dir, document_metrics = run_evaluation(
+                self.gt_dir, self.pred_dir, verbose=False
+            )
+
+        try:
+            self.assertEqual(
+                document_metrics["summary"]["page_count"], 2
+            )
+            self.assertTrue(
+                any(
+                    "p0002.txt" in w and "simulated calculation failure" in w
+                    for w in document_metrics["warnings"]
+                )
+            )
+
+            with open(
+                os.path.join(output_dir, "metrics_pagewise.json"),
+                encoding="utf-8",
+            ) as f:
+                pages = json.load(f)
+            page_names = {p["page"] for p in pages}
+            self.assertEqual(page_names, {"p0001", "p0003"})
         finally:
             _cleanup(output_dir)
 
