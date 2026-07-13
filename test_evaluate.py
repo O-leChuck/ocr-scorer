@@ -200,7 +200,7 @@ class TestRunEvaluationReturnValue(unittest.TestCase):
             _cleanup(output_dir)
 
     def test_nonexistent_gt_folder_raises_value_error(self):
-        """Test that a missing Goldstandard folder raises, not crashes
+        """Test that a missing ground truth folder raises, not crashes
         with an unhandled exception or silently does nothing."""
         pred_dir = os.path.join(TEST_DATA_DIR, "DS-2_regular-errors", "pred")
 

@@ -50,9 +50,7 @@ def main(argv=None):
             "text files."
         )
     )
-    parser.add_argument(
-        "--gt", help="Path to the Goldstandard (ground truth) folder"
-    )
+    parser.add_argument("--gt", help="Path to the ground truth folder")
     parser.add_argument("--pred", help="Path to the prediction folder")
     args = parser.parse_args(argv)
 
@@ -66,14 +64,14 @@ def main(argv=None):
         configured_gt, configured_pred = load_default_paths()
 
         initial_directory_gt = _resolve_initial_directory(
-            configured_gt, "Goldstandard folder"
+            configured_gt, "ground truth folder"
         )
         initial_directory_pred = _resolve_initial_directory(
             configured_pred, "prediction folder"
         )
 
         title_gt_selection = (
-            "Select ANY ONE .txt file - the whole Goldstandard folder "
+            "Select ANY ONE .txt file - the whole ground truth folder "
             "will be used"
         )
         title_pred_selection = (

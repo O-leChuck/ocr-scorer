@@ -87,7 +87,7 @@ class TestLoadDefaultPaths(unittest.TestCase):
         _write_config(
             self.config_path,
             f"[paths]\n"
-            f"goldstandard_folder = {self.gt_dir}\n"
+            f"ground_truth_folder = {self.gt_dir}\n"
             f"prediction_folder = {self.pred_dir}\n",
         )
 
@@ -100,7 +100,7 @@ class TestLoadDefaultPaths(unittest.TestCase):
         """Test that blank config values are treated as unset."""
         _write_config(
             self.config_path,
-            "[paths]\ngoldstandard_folder = \nprediction_folder = \n",
+            "[paths]\nground_truth_folder = \nprediction_folder = \n",
         )
 
         self.assertEqual(self._load_with_patched_path(), (None, None))
@@ -118,7 +118,7 @@ class TestLoadDefaultPaths(unittest.TestCase):
         _write_config(
             self.config_path,
             f"[paths]\n"
-            f"goldstandard_folder = {missing_path}\n"
+            f"ground_truth_folder = {missing_path}\n"
             f"prediction_folder = {self.pred_dir}\n",
         )
 
@@ -139,7 +139,7 @@ class TestLoadDefaultPaths(unittest.TestCase):
         rather than an all-or-nothing result."""
         _write_config(
             self.config_path,
-            f"[paths]\ngoldstandard_folder = {self.gt_dir}\n",
+            f"[paths]\nground_truth_folder = {self.gt_dir}\n",
         )
 
         gt, pred = self._load_with_patched_path()

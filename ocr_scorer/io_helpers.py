@@ -253,7 +253,7 @@ def save_evaluation_log(
         txt_file.write("Evaluation Log\n")
         txt_file.write("===============\n")
         txt_file.write(f"Evaluation date: {log_date}\n")
-        txt_file.write(f"Goldstandard folder: {folder_gt}\n")
+        txt_file.write(f"Ground truth folder: {folder_gt}\n")
         txt_file.write(f"Prediction folder: {folder_pred}\n")
         txt_file.write(f"Export folder: {output_dir}\n")
         txt_file.write(f"Page count: {len(gold_files)}\n")

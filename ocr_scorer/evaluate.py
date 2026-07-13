@@ -75,7 +75,7 @@ def run_evaluation(
             print(message)
 
     if not os.path.isdir(folder_gt):
-        raise ValueError(f"Goldstandard folder does not exist: {folder_gt}")
+        raise ValueError(f"Ground truth folder does not exist: {folder_gt}")
     if not os.path.isdir(folder_pred):
         raise ValueError(f"Prediction folder does not exist: {folder_pred}")
 
@@ -85,12 +85,12 @@ def run_evaluation(
 
     if not files_gt or not files_pred:
         raise ValueError(
-            "No .txt files found in the Goldstandard and/or prediction "
+            "No .txt files found in the ground truth and/or prediction "
             "folder. Nothing to evaluate."
         )
     if len(files_gt) != len(files_pred):
         raise ValueError(
-            f"File count mismatch: Goldstandard folder has "
+            f"File count mismatch: ground truth folder has "
             f"{len(files_gt)} .txt files, prediction folder has "
             f"{len(files_pred)}. Both folders must contain the same "
             "number of files (see README, 'how pages are matched')."

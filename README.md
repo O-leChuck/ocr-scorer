@@ -33,7 +33,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-You'll be prompted to pick your Goldstandard (ground truth) folder, then
+You'll be prompted to pick your ground truth folder, then
 your predictions folder - see [Interactive use](#interactive-use) for what
 exactly to click. Results are written next to your predictions folder; see
 [Output](#output).
@@ -65,7 +65,7 @@ results, and how to customize the normalization, see
 ### Interactive use
 
 Run `python main.py` (or `ocr-scorer` if installed). When prompted, select
-**any one `.txt` file inside** your Goldstandard folder, then do the same
+**any one `.txt` file inside** your ground truth folder, then do the same
 for your predictions folder - the tool uses that file's parent folder.
 This is deliberate: the dialog is a regular file picker (not a plain
 folder picker), so you can see the folder's contents while browsing and
@@ -90,7 +90,7 @@ order:
 Whichever one is used, it's printed to the terminal so it's never a
 silent guess. To set your own default: copy `config.template.ini` to
 `config.ini` (same folder) and fill in
-`goldstandard_folder`/`prediction_folder` under `[paths]`. `config.ini`
+`ground_truth_folder`/`prediction_folder` under `[paths]`. `config.ini`
 is in `.gitignore`, so your local paths are never committed. Either entry
 can be left blank; an invalid or nonexistent path is ignored (with a
 warning) rather than breaking the tool, falling through to the next
@@ -126,7 +126,7 @@ there are two options that skip the folder-picker dialogs entirely:
 **From the command line**, pass both folders as flags:
 
 ```bash
-python main.py --gt /path/to/goldstandard --pred /path/to/predictions
+python main.py --gt /path/to/groundtruth --pred /path/to/predictions
 ```
 
 `--gt` and `--pred` must be given together; providing only one is treated

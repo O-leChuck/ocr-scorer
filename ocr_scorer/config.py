@@ -19,9 +19,9 @@ _CONFIG_PATH = os.path.join(_PROJECT_ROOT, CONFIG_FILENAME)
 
 
 def load_default_paths() -> tuple[str | None, str | None]:
-    """Read the configured default Goldstandard/prediction folders.
+    """Read the configured default ground truth/prediction folders.
 
-    Returns (goldstandard_folder, prediction_folder). Either value is
+    Returns (ground_truth_folder, prediction_folder). Either value is
     None if config.ini doesn't exist, can't be parsed, has no value for
     that path, or the configured path doesn't exist on disk - callers
     should treat None as "no configured default" and fall back to their
@@ -38,12 +38,12 @@ def load_default_paths() -> tuple[str | None, str | None]:
         print(f"Warning: could not parse {CONFIG_FILENAME}: {exc}")
         return None, None
 
-    gt_path = parser.get("paths", "goldstandard_folder", fallback="").strip()
+    gt_path = parser.get("paths", "ground_truth_folder", fallback="").strip()
     pred_path = parser.get("paths", "prediction_folder", fallback="").strip()
 
     if gt_path and not os.path.isdir(gt_path):
         print(
-            f"Warning: {CONFIG_FILENAME}'s goldstandard_folder "
+            f"Warning: {CONFIG_FILENAME}'s ground_truth_folder "
             f"'{gt_path}' does not exist - ignoring it."
         )
         gt_path = ""

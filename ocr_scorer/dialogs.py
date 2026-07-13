@@ -82,7 +82,7 @@ def validate_and_select_folders(
         if not folder_gt:  # User clicked Cancel
             print("Folder selection cancelled by user.")
             return None
-        print(f"Selected Goldstandard folder: {folder_gt}")
+        print(f"Selected ground truth folder: {folder_gt}")
 
         # Select prediction folder
         folder_pred = select_folder(initial_dir_pred, title_pred)
@@ -101,7 +101,7 @@ def validate_and_select_folders(
         else:
             error_message = (
                 f"File count mismatch!\n\n"
-                f"Ground Truth folder: {len(files_gt)} files\n"
+                f"Ground truth folder: {len(files_gt)} files\n"
                 f"Prediction folder: {len(files_pred)} files\n\n"
                 f"Please ensure both folders contain the same dataset "
                 f"and that the prediction process completed successfully.\n\n"
