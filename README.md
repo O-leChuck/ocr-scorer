@@ -83,8 +83,9 @@ order:
 
 1. A path you configure yourself in `config.ini` (see below) - the
    recommended option once you have a regular working folder.
-2. A hardcoded fallback path from the project this tool originally
-   shipped with, which almost certainly doesn't exist on your machine.
+2. Your home directory, as a machine-agnostic, always-exists fallback
+   that works the same way on Windows/macOS/Linux and makes no
+   assumption about your folder structure.
 
 Whichever one is used, it's printed to the terminal so it's never a silent
 guess. To set your own default: copy `config.template.ini` to `config.ini`

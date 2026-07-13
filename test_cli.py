@@ -13,6 +13,7 @@ import glob
 import json
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import ocr_scorer.cli as cli
@@ -46,25 +47,21 @@ class TestDefaultPathPriority(unittest.TestCase):
         self.assertEqual(gt, "/configured/gt")
         self.assertEqual(pred, "/configured/pred")
 
-    def test_builtin_fallback_used_when_not_configured(self):
-        """Test that the hardcoded default is used when config.ini is
-        absent or has no value for that path."""
+    def test_home_directory_used_when_not_configured(self):
+        """Test that the user's home directory (portable across
+        Windows/macOS/Linux, and free of any assumption about this
+        machine's folder structure) is used when config.ini is absent
+        or has no value for that path."""
         gt, pred = self._resolve((None, None))
-        self.assertEqual(
-            gt, "/home/covid10/Nextcloud/Lumen-Lucernae/sources"
-        )
-        self.assertEqual(
-            pred, "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/"
-        )
+        self.assertEqual(gt, str(Path.home()))
+        self.assertEqual(pred, str(Path.home()))
 
     def test_mixed_sources_are_resolved_independently(self):
         """Test that GT and prediction paths fall through the priority
         chain independently of one another."""
         gt, pred = self._resolve(("/configured/gt", None))
         self.assertEqual(gt, "/configured/gt")
-        self.assertEqual(
-            pred, "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/"
-        )
+        self.assertEqual(pred, str(Path.home()))
 
 
 class TestCliArgs(unittest.TestCase):

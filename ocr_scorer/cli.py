@@ -7,23 +7,31 @@ directly instead of anything in this module.
 """
 
 import argparse
+from pathlib import Path
 
 from .config import load_default_paths
 from .dialogs import validate_and_select_folders
 from .evaluate import run_evaluation
 
 
-def _resolve_initial_directory(configured_path, fallback_path, label):
+def _resolve_initial_directory(configured_path, label):
     """Pick the starting directory for a folder-selection dialog and
     report which source was used, so a stale/unexpected default is
     visible upfront rather than silently steering folder selection.
 
-    Priority: config.ini > built-in fallback.
+    Priority: config.ini > the user's home directory. The home
+    directory (via pathlib.Path.home(), which resolves correctly on
+    Windows/macOS/Linux) is used as the last resort specifically
+    because it always exists and makes no assumption whatsoever about
+    this machine's folder structure, username, or OS - unlike a
+    hardcoded path, which by definition only ever matches the one
+    machine it was hardcoded for.
     """
     if configured_path:
         print(f"Using configured default for {label}: {configured_path}")
         return configured_path
-    print(f"Using built-in fallback default for {label}: {fallback_path}")
+    fallback_path = str(Path.home())
+    print(f"Using home directory as default for {label}: {fallback_path}")
     return fallback_path
 
 
@@ -58,14 +66,10 @@ def main(argv=None):
         configured_gt, configured_pred = load_default_paths()
 
         initial_directory_gt = _resolve_initial_directory(
-            configured_gt,
-            "/home/covid10/Nextcloud/Lumen-Lucernae/sources",
-            "Goldstandard folder",
+            configured_gt, "Goldstandard folder"
         )
         initial_directory_pred = _resolve_initial_directory(
-            configured_pred,
-            "/home/covid10/Nextcloud/Lumen-Lucernae/predictions/",
-            "prediction folder",
+            configured_pred, "prediction folder"
         )
 
         title_gt_selection = (
