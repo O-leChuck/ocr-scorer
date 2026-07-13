@@ -26,11 +26,17 @@ The script supports two evaluation regimes:
 
 ## Files
 
-- `main.py` - main scoring script
-- `io_helpers.py` - folder selection and metric export helper functions
-- `metrics.py` - CER/WER calculation and character-error analysis
-- `plotting.py` - chart and PDF report generation
-- `config.py` - loads optional default folder paths from `config.ini`
+- `main.py` - thin compatibility entry point (`python main.py`); the
+  actual implementation lives in `ocr_scorer/`
+- `ocr_scorer/evaluate.py` - the core evaluation logic (`run_evaluation()`),
+  the intended import point for using this as a library/pipeline step
+- `ocr_scorer/cli.py` - interactive/command-line entry point
+- `ocr_scorer/dialogs.py` - the interactive folder-selection dialogs (the
+  only module that touches tkinter)
+- `ocr_scorer/io_helpers.py` - metric/log export and page-pairing helpers
+- `ocr_scorer/metrics.py` - CER/WER calculation and character-error analysis
+- `ocr_scorer/plotting.py` - chart and PDF report generation
+- `ocr_scorer/config.py` - loads optional default folder paths from `config.ini`
 - `config.template.ini` - template for `config.ini` (see [Configuring default folders](#configuring-default-folders))
 - `requirements.txt` - Python package requirements
 - `README.md` - usage and documentation
@@ -134,14 +140,19 @@ python main.py --gt /path/to/goldstandard --pred /path/to/predictions
 as a usage error rather than falling back to the interactive dialog for
 the other.
 
-**From another Python script**, import `run_evaluation()` directly instead
-of going through `main()`:
+**From another Python script**, import `run_evaluation()` from the
+`ocr_scorer` package directly, instead of going through the CLI:
 
 ```python
-from main import run_evaluation
+from ocr_scorer import run_evaluation
 
 output_dir, document_metrics = run_evaluation(gt_path, pred_path)
 ```
+
+`import ocr_scorer` never touches tkinter, so this works in headless
+environments (servers, CI, minimal Docker images) where a display - or
+even tkinter itself - isn't available; only the interactive CLI
+(`ocr_scorer.cli`/`ocr_scorer.dialogs`) needs it.
 
 `run_evaluation()` runs the same evaluation as the interactive tool -
 writing the same files to a dated `evaluation_YYYY-MM-DD` folder next to
@@ -153,8 +164,18 @@ Unlike the interactive flow, there's no dialog to retry folder selection
 if something's wrong, so `run_evaluation()` raises `ValueError` instead
 (rather than printing a message and silently doing nothing) if either
 folder doesn't exist, contains no `.txt` files, or the two folders contain
-different numbers of files. `main()` catches this and prints a plain error
+different numbers of files. The CLI catches this and prints a plain error
 message when run from the command line.
+
+Anything noteworthy that happens during a run but doesn't stop it (a page
+that failed to read, a page-number mismatch, a page whose CER/WER came out
+undefined - see [Empty-reference pages](#empty-reference-pages)) is by
+default also printed to the terminal, which a pipeline could easily miss.
+Every such message is therefore also collected into
+`document_metrics["warnings"]`, so a caller can check for problems without
+watching stdout. Pass `verbose=False` to suppress the printing entirely
+(e.g. if your pipeline has its own logging) without losing anything - the
+same information is still in `document_metrics["warnings"]`.
 
 ## Output
 
@@ -259,7 +280,7 @@ Neither transform touches symbols that are not classified as punctuation by Unic
 
 This means the current normalized regime is more aggressive than plain whitespace normalization: it lowercases text and strips/converts punctuation while still counting real additions, deletions, and substitutions.
 
-If the exact shape of historic punctuation is important to your evaluation, preserve it by removing `RemovePunctuation()` (for CER) and/or `ReplacePunctuationWithSpace()` (for WER) from the custom transform pipelines in `metrics.py`.
+If the exact shape of historic punctuation is important to your evaluation, preserve it by removing `RemovePunctuation()` (for CER) and/or `ReplacePunctuationWithSpace()` (for WER) from the custom transform pipelines in `ocr_scorer/metrics.py`.
 
 #### Why normalized may still differ from raw only a little
 
@@ -268,7 +289,7 @@ If your raw and normalized results are similar, it likely means:
 - The remaining errors are actual transcription mistakes rather than punctuation/case differences
 - The pipeline removes/converts punctuation and lowercases text, but still counts real additions, deletions, and substitutions
 
-If you want a different normalization behavior, you can modify `metrics.py` to adjust the jiwer transform pipelines.
+If you want a different normalization behavior, you can modify `ocr_scorer/metrics.py` to adjust the jiwer transform pipelines.
 
 ## Example: Raw vs. Normalized
 
@@ -296,7 +317,7 @@ The normalized metrics will be similar to raw if:
 
 The current script already applies a custom jiwer pipeline with lowercasing, punctuation handling, whitespace normalization, and page-level aggregation.
 
-To change this behavior, edit [metrics.py](metrics.py) and adjust the `cer_custom_transform` and `wer_custom_transform` pipelines.
+To change this behavior, edit [ocr_scorer/metrics.py](ocr_scorer/metrics.py) and adjust the `cer_custom_transform` and `wer_custom_transform` pipelines.
 
 For example, to preserve punctuation for historic documents, drop the punctuation step from each pipeline:
 
@@ -317,14 +338,14 @@ wer_custom_transform = Compose([
 ])
 ```
 
-These are the same `cer_custom_transform`/`wer_custom_transform` objects already used by `calculate_jiwer_metrics()` and `calculate_jiwer_counts()` in `metrics.py`, so editing them there is enough - no other code needs to change.
+These are the same `cer_custom_transform`/`wer_custom_transform` objects already used by `calculate_jiwer_metrics()` and `calculate_jiwer_counts()` in `ocr_scorer/metrics.py`, so editing them there is enough - no other code needs to change.
 
 ## Notes
 
 - The raw regime is useful for exact whitespace/tokenization-sensitive comparisons.
 - The normalized regime applies lowercasing and punctuation handling (removed for CER, replaced with a space for WER) in addition to whitespace normalization.
 - If normalized and raw results are very similar, your OCR output likely has consistent formatting and the remaining errors are actual transcription differences.
-- Modify `metrics.py` if you want a different normalization pipeline.
+- Modify `ocr_scorer/metrics.py` if you want a different normalization pipeline.
 
 ### Footnote: exactly how empty-reference values are represented
 

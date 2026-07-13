@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import config
+import ocr_scorer.config as config
 
 
 def _write_config(path, contents):

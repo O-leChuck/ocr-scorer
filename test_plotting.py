@@ -18,7 +18,7 @@ matplotlib.use("Agg")  # headless backend, no display needed for tests
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from plotting import build_metrics_chart, create_pdf_report, plot_metrics
+from ocr_scorer.plotting import build_metrics_chart, create_pdf_report, plot_metrics
 
 
 def _make_df(num_pages: int) -> pd.DataFrame:

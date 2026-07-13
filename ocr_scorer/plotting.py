@@ -1,14 +1,24 @@
 """Helpers for saving metric exports and creating visualizations.
 
-This module centralizes CSV/JSON export and plotting so `main.py` can
-focus on orchestration only.
+This module centralizes CSV/JSON export and plotting so evaluate.py
+can focus on orchestration only.
 """
 
 import os
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib
+
+# Force a non-interactive backend before importing pyplot. This module
+# only ever saves figures to disk (PNG/PDF) and never displays them, so
+# it must not depend on a display being available - relevant both when
+# run headless (e.g. a server/CI pipeline importing ocr_scorer as a
+# library) and to avoid flaky, environment-dependent backend
+# auto-selection.
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt  # noqa: E402  (must follow matplotlib.use)
+from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
 _METRIC_SPECS = [
     ("cer_raw", "o", "CER raw", "#FF6B6B"),
@@ -70,18 +80,25 @@ def build_metrics_chart(df: pd.DataFrame) -> plt.Figure:
     return fig
 
 
-def plot_metrics(df: pd.DataFrame, output_dir: str) -> None:
+def plot_metrics(
+    df: pd.DataFrame, output_dir: str, *, verbose: bool = True
+) -> None:
     """Create a visualization from the metrics DataFrame and save it as PNG."""
     fig = build_metrics_chart(df)
     chart_output_path = os.path.join(output_dir, "metrics_visualization.png")
     plt.tight_layout()
     fig.savefig(chart_output_path, dpi=300, bbox_inches="tight")
-    print(f"Visualization saved to: {chart_output_path}")
+    if verbose:
+        print(f"Visualization saved to: {chart_output_path}")
     plt.close(fig)
 
 
 def create_pdf_report(
-    df: pd.DataFrame, document_metrics: dict, output_dir: str
+    df: pd.DataFrame,
+    document_metrics: dict,
+    output_dir: str,
+    *,
+    verbose: bool = True,
 ) -> None:
     """Create a PDF report with summary text and the metrics chart."""
     report_path = os.path.join(output_dir, "evaluation_report.pdf")
@@ -137,6 +154,7 @@ def create_pdf_report(
         plt.close(fig2)
 
     if os.path.isfile(report_path):
-        print(f"PDF report saved to: {report_path}")
+        if verbose:
+            print(f"PDF report saved to: {report_path}")
     else:
         raise FileNotFoundError(f"PDF report was not created: {report_path}")

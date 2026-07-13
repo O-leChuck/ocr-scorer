@@ -35,7 +35,8 @@ Repository = "https://github.com/O-leChuck/ocr-scorer"
 Issues = "https://github.com/O-leChuck/ocr-scorer/issues"
 
 [project.scripts]
-ocr-scorer = "main:main"
+ocr-scorer = "ocr_scorer.cli:main"
 
 [tool.setuptools]
-py-modules = ["main", "io_helpers", "metrics", "plotting"]
+packages = ["ocr_scorer"]
+py-modules = ["main"]

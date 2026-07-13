@@ -1,8 +1,9 @@
-"""Utility helpers for folder selection and metric export.
+"""Pure I/O helpers for metric export and page-pairing checks.
 
-This module provides input/output helpers for the OCR evaluation
-workflow, including selecting folders via dialog, locating relevant
-folders on disk, and saving metric data to CSV/JSON.
+Everything in this module is safe to import in a headless/pipeline
+context: no GUI toolkit, no display required. The interactive folder
+dialogs live separately in ocr_scorer.dialogs, which is the only
+module in this package allowed to import tkinter.
 """
 
 import json
@@ -12,120 +13,13 @@ import re
 import glob
 from datetime import date
 from typing import Any
-from tkinter import Tk
-from tkinter.filedialog import askopenfilename
-from tkinter.messagebox import showerror
+
 import pandas as pd
 
 # Matches a page/sequence number marked with a "p"/"page" prefix, e.g.
 # "p0004_..." -> 4, "..._p0142.txt" -> 142. Longer alternative first so
 # "page" isn't shadowed by "p" during matching.
 _PAGE_MARKER_PATTERN = re.compile(r"(?:page|p)(\d+)", re.IGNORECASE)
-
-
-def select_folder(initialdirectory, title):
-    """Open a dialog to select a folder and return the selected path.
-
-    This asks the user to pick any one file *inside* the target folder,
-    rather than the folder itself, and returns that file's parent
-    directory. tkinter's directory-only picker (askdirectory) hides
-    files by design on every platform, since its purpose is choosing a
-    container rather than a file - which made it easy to end up in the
-    wrong folder (e.g. an unrelated same-named folder elsewhere) without
-    ever seeing that it didn't contain the expected files. A file picker
-    shows the folder's contents while browsing, so a wrong/empty folder
-    is visible immediately instead of surfacing later as a confusing
-    file-count mismatch.
-
-    The dialog is restricted to .txt files only (no "all files" escape
-    hatch), since that's the only format this tool processes - letting
-    someone pick a different file type would defeat the point above, by
-    allowing a folder with no usable files to be "selected" anyway. A
-    folder with no .txt files will simply appear empty in the dialog.
-    """
-
-    print(
-        f"{title} - only .txt files are shown, since this tool only "
-        "processes plain-text .txt files."
-    )
-
-    # we don't want a full GUI, so keep the root window from appearing
-    root = Tk()
-    root.withdraw()
-    try:
-        file_selected = askopenfilename(
-            initialdir=initialdirectory,
-            title=title,
-            filetypes=[("Text files", "*.txt")],
-        )
-    finally:
-        root.destroy()
-    return os.path.dirname(file_selected) if file_selected else ""
-
-
-def validate_and_select_folders(
-    initial_dir_gt: str,
-    initial_dir_pred: str,
-    title_gt: str,
-    title_pred: str,
-) -> tuple[str, str] | None:
-    """Repeatedly prompt user to select GT and prediction folders until
-    file counts match. Allows user to abort at any time.
-
-    Args:
-        initial_dir_gt: Starting directory for GT folder selection
-        initial_dir_pred: Starting directory for prediction folder selection
-        title_gt: Title for GT folder selection dialog
-        title_pred: Title for prediction folder selection dialog
-
-    Returns:
-        Tuple of (folder_gt, folder_pred) if valid, None if user aborts.
-    """
-
-    while True:
-        # Select GT folder
-        folder_gt = select_folder(initial_dir_gt, title_gt)
-        if not folder_gt:  # User clicked Cancel
-            print("Folder selection cancelled by user.")
-            return None
-        print(f"Selected Goldstandard folder: {folder_gt}")
-
-        # Select prediction folder
-        folder_pred = select_folder(initial_dir_pred, title_pred)
-        if not folder_pred:  # User clicked Cancel
-            print("Folder selection cancelled by user.")
-            return None
-        print(f"Selected prediction folder: {folder_pred}")
-
-        # Check if file counts match
-        files_gt = sorted(glob.glob(os.path.join(folder_gt, "*.txt")))
-        files_pred = sorted(glob.glob(os.path.join(folder_pred, "*.txt")))
-
-        if len(files_gt) == len(files_pred):
-            print(f"✓ Matched: {len(files_gt)} files in each folder")
-            return (folder_gt, folder_pred)
-        else:
-            error_message = (
-                f"File count mismatch!\n\n"
-                f"Ground Truth folder: {len(files_gt)} files\n"
-                f"Prediction folder: {len(files_pred)} files\n\n"
-                f"Please ensure both folders contain the same dataset "
-                f"and that the prediction process completed successfully.\n\n"
-                f"Click OK to select the folders again, or Cancel to abort."
-            )
-            print(
-                f"✗ Mismatch: GT has {len(files_gt)} files, "
-                f"Prediction has {len(files_pred)} files."
-            )
-            # Show error dialog to user
-            root = Tk()
-            root.withdraw()
-            showerror("Folder Validation Error", error_message)
-            root.destroy()
-
-            # Keep the last selected directories as defaults for next attempt
-            initial_dir_gt = folder_gt
-            initial_dir_pred = folder_pred
 
 
 def extract_page_number(filename: str) -> int | None:
@@ -154,7 +48,7 @@ def check_page_number_alignment(
     files_gt: list[str], files_pred: list[str]
 ) -> tuple[bool, list[str]]:
     """Best-effort sanity check for the sort-order file pairing used by
-    main.py.
+    ocr_scorer.evaluate.run_evaluation().
 
     Files are otherwise paired purely by their position in each sorted
     list, since prediction filenames are not guaranteed to resemble GT
@@ -222,6 +116,8 @@ def save_metrics(
     page_metrics: list[dict],
     output_dir: str,
     document_metrics: dict | None = None,
+    *,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """Save per-page metrics to CSV/JSON and optionally document-level metrics.
 
@@ -231,21 +127,25 @@ def save_metrics(
 
     csv_output_path = os.path.join(output_dir, "metrics_pagewise.csv")
     df.to_csv(csv_output_path, index=False)
-    print(f"\nMetrics saved to CSV: {csv_output_path}")
+    if verbose:
+        print(f"\nMetrics saved to CSV: {csv_output_path}")
 
     json_output_path = os.path.join(output_dir, "metrics_pagewise.json")
     json_records = _make_json_safe(df.to_dict(orient="records"))
     with open(json_output_path, "w", encoding="utf-8") as json_file:
         json.dump(json_records, json_file, indent=2, ensure_ascii=False)
-    print(f"Metrics saved to JSON: {json_output_path}")
+    if verbose:
+        print(f"Metrics saved to JSON: {json_output_path}")
 
     if document_metrics is not None:
-        save_document_metrics(document_metrics, output_dir)
+        save_document_metrics(document_metrics, output_dir, verbose=verbose)
 
     return df
 
 
-def save_document_metrics(document_metrics: dict, output_dir: str) -> None:
+def save_document_metrics(
+    document_metrics: dict, output_dir: str, *, verbose: bool = True
+) -> None:
     """Save document-level metrics and top-error metadata to CSV/JSON."""
 
     # Write a clean JSON summary (nested structure)
@@ -257,14 +157,16 @@ def save_document_metrics(document_metrics: dict, output_dir: str) -> None:
             indent=2,
             ensure_ascii=False,
         )
-    print(f"Document metrics saved to JSON: {json_output_path}")
+    if verbose:
+        print(f"Document metrics saved to JSON: {json_output_path}")
 
     # Export human-friendly CSV files: summary and two top-letter tables
     summary = document_metrics.get("summary", {})
     summary_rows = [{"metric": k, "value": v} for k, v in summary.items()]
     summary_csv_path = os.path.join(output_dir, "metrics_document_summary.csv")
     pd.DataFrame(summary_rows).to_csv(summary_csv_path, index=False)
-    print(f"Document summary saved to CSV: {summary_csv_path}")
+    if verbose:
+        print(f"Document summary saved to CSV: {summary_csv_path}")
 
     def _write_top_table(section_name: str, filename: str):
         items = document_metrics.get(section_name, [])
@@ -281,7 +183,8 @@ def save_document_metrics(document_metrics: dict, output_dir: str) -> None:
         ]
         out_path = os.path.join(output_dir, filename)
         pd.DataFrame(table_rows).to_csv(out_path, index=False)
-        print(f"{section_name} saved to CSV: {out_path}")
+        if verbose:
+            print(f"{section_name} saved to CSV: {out_path}")
 
     _write_top_table("top_error_chars_raw", "metrics_document_top_raw.csv")
     _write_top_table(
@@ -334,6 +237,8 @@ def save_evaluation_log(
     output_dir: str,
     evaluation_date: str | None = None,
     page_number_check: tuple[bool, list[str]] | None = None,
+    *,
+    verbose: bool = True,
 ) -> None:
     """
     Save an evaluation log containing folder metadata and evaluation
@@ -363,4 +268,5 @@ def save_evaluation_log(
         txt_file.write("\nPrediction files:\n")
         for file_name in [os.path.basename(path) for path in pred_files]:
             txt_file.write(f"  - {file_name}\n")
-    print(f"Evaluation log saved to: {txt_output_path}")
+    if verbose:
+        print(f"Evaluation log saved to: {txt_output_path}")

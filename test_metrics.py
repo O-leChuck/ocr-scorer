@@ -19,7 +19,7 @@ from jiwer import (
     wer,
 )
 
-from metrics import (
+from ocr_scorer.metrics import (
     ReplacePunctuationWithSpace,
     aggregate_top_error_chars,
     calculate_jiwer_counts,
@@ -224,6 +224,14 @@ class TestAggregateTopErrorChars(unittest.TestCase):
         self.assertEqual(len(results), 2)
         # 'a' has the most errors (4), so it must be ranked first
         self.assertEqual(results[0][0], "a")
+
+    def test_normalized_mode_lowercases_before_counting(self):
+        # migrated from the now-removed test_top_letters.py: with
+        # normalize=True, "A" vs "B" is counted as a lowercase 'a' error
+        results = aggregate_top_error_chars(
+            ["A"], ["B"], normalize=True, top_n=3
+        )
+        self.assertEqual(results, [("a", 1, 100.0)])
 
 
 class TestFixtureDataRawDistances(unittest.TestCase):
